@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About Us - TechFlow Solutions</title>
+    <style>
+        
+
+        .about-why-1-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 40px;
+            height: auto;
+        }
+
+        /* Header */
+        .about-why-1-header {
+            padding: 60px 0 120px;
+            border-bottom: 1px solid #f1f1f1;
+        }
+
+        .about-why-1-brand {
+            font-size: 24px;
+            font-weight: 500;
+            letter-spacing: -0.5px;
+            margin-bottom: 80px;
+            color: #000;
+        }
+
+        .about-why-1-hero-title {
+            font-size: clamp(48px, 8vw, 120px);
+            font-weight: 500;
+            line-height: 0.9;
+            letter-spacing: -2px;
+            margin-bottom: 40px;
+            color: #000;
+        }
+
+        .about-why-1-hero-subtitle {
+            font-size: 18px;
+            color: #999;
+            max-width: 600px;
+            line-height: 1.5;
+        }
+
+        /* Main Content */
+        .about-why-1-main {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 30px;
+            margin: 30px;
+            background: #f2f1f1;
+            border-radius: 30px;
+        }
+
+        .about-why-1-section {
+            width: 100%;
+        }
+
+        .about-why-1-section-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .about-why-1-section-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #222;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 12px;
+        }
+
+        .about-why-1-section-number {
+            font-size: 14px;
+            color: #999;
+            font-weight: 400;
+            letter-spacing: 1px;
+        }
+
+        .about-why-1-section-title {
+            font-size: clamp(36px, 5vw, 64px);
+            font-weight: 500;
+            letter-spacing: -1px;
+            line-height: 1;
+            color: #fff;
+        }
+
+        .about-why-1-section-subtitle {
+            font-size: 18px;
+            color: #999;
+            margin-bottom: 60px;
+            max-width: 800px;
+        }
+
+        /* Team Hero Section */
+        .about-why-1-team-hero {
+            display: grid;
+            grid-template-columns: 60% 40%;
+            gap: 60px;
+            align-items: start;
+        }
+
+        .about-why-1-team-hero-title {
+          width: 600px;
+            font-size: clamp(36px, 5vw, 64px);
+            font-weight: 500;
+            line-height: 1.1;
+            letter-spacing: -1.5px;
+            margin-bottom: 40px;
+            color: #000;
+        }
+        .about-why-1-team-hero-title span{
+          color: #666;
+        }
+
+        .about-why-1-team-mp {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 40px;
+        }
+
+        .about-why-1-team-mission, .about-why-1-team-philosophy {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 20px;
+            margin-bottom: 0;
+        }
+
+        .about-why-1-plus-icon {
+            font-size: 28px;
+            color: #666;
+            font-weight: 300;
+            flex-shrink: 0;
+            margin-top: 8px;
+        }
+
+        .about-why-1-mission-content h3 {
+            font-size: 18px;
+            font-weight: 500;
+            margin-bottom: 12px;
+            letter-spacing: -0.5px;
+            color: #000;
+        }
+
+        .about-why-1-mission-content p, .about-why-1-philosophy-content  {
+            font-size: 14px;
+            line-height: 1.5;
+            color: #777;
+            margin-bottom: 20px;
+        }
+
+        .about-why-1-philosophy-intro {
+            font-size: 20px;
+            font-weight: 500;
+            color: #000;
+            line-height: 1.4;
+        }
+        
+        .about-why-1-philosophy-intro span {
+            font-size: 20px; 
+            color: #777;
+            display: block; 
+        }
+
+        .about-why-1-apply-btn {
+            background: #000;
+            color: #fff;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.3s ease, color 0.3s ease;
+        }
+
+        .about-why-1-apply-btn:hover {
+            background: #666;
+            color: #fff;
+        }
+
+        /* Team Photos Grid */
+        .about-why-1-photo-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+        }
+
+        .about-why-1-team-card {
+            position: relative;
+            width: 100%;
+            height: 300px;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+            cursor: pointer;
+            transition: transform 0.3s ease;
+        }
+
+        .about-why-1-team-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .about-why-1-team-card-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-size: cover;
+            background-position: center;
+            transition: transform 0.6s ease, filter 0.4s ease;
+            z-index: 1;
+        }
+
+        .about-why-1-team-card:hover .about-why-1-team-card-bg {
+            filter: blur(5px) brightness(0.7);
+            transform: scale(1.1);
+        }
+
+        
+        
+        /* Different background patterns for each card */
+        .about-why-1-team-card:nth-child(1) .about-why-1-team-card-bg {
+            background: linear-gradient(135deg, #ff9a9e 0%, #fad0c4 100%);
+        }
+
+        .about-why-1-team-card:nth-child(2) .about-why-1-team-card-bg {
+            background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+        }
+
+        .about-why-1-team-card:nth-child(3) .about-why-1-team-card-bg {
+            background: linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%);
+        }
+
+        .about-why-1-team-card:nth-child(4) .about-why-1-team-card-bg {
+            background: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%);
+        }
+
+        .about-why-1-initials {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 80px;
+            font-weight: 700;
+            color: rgba(255, 255, 255, 0.2);
+            z-index: 1;
+        }
+
+        .about-why-1-card-header {
+            width: 90%;
+            padding: 10px 15px;
+            position: absolute;
+            top: 0;
+            left: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 2;
+        }
+
+        .about-why-1-add-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #222;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 12px;
+        }
+
+        .about-why-1-role-info {
+            text-align: right;
+            font-size: 12px;
+            color: #fff;
+        }
+
+        .about-why-1-role {
+            font-weight: 500;
+            color: #fff;
+        }
+
+        .about-why-1-company {
+            color: #999;
+            margin-top: 2px;
+        }
+
+        .about-why-1-info {
+            position: absolute;
+            bottom: 10px;
+            left: 15px;
+            width: calc(100% - 30px);
+            text-align: left;
+            z-index: 2;
+            transition: transform 0.4s ease;
+        }
+
+        .about-why-1-member-name {
+            font-size: 18px;
+            font-weight: bold;
+            color: #fff;
+            margin-bottom: 0;
+            transition: transform 0.4s ease;
+        }
+
+        .about-why-1-description {
+            font-size: 14px;
+            color: #fff;
+            opacity: 0;
+            max-height: 0;
+            transform: translateY(15px);
+            transition: opacity 0.4s ease, transform 0.4s ease;
+        }
+
+        .about-why-1-team-card:hover .about-why-1-member-name {
+            transform: translateY(-8px);
+        }
+
+        .about-why-1-team-card:hover .about-why-1-description {
+            opacity: 1;
+            max-height: 200px;
+            transform: translateY(0);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1200px) {
+            .about-why-1-team-hero {
+                gap: 40px;
+            }
+            
+            .about-why-1-team-mp {
+                gap: 30px;
+            }
+            
+            .about-why-1-team-card {
+                height: 280px;
+            }
+        }
+
+        @media (max-width: 1024px) {
+            .about-why-1-container {
+                padding: 0 30px;
+            }
+            
+            .about-why-1-main {
+                padding: 25px;
+                margin: 20px;
+            }
+            
+            .about-why-1-team-hero {
+                grid-template-columns: 55% 45%;
+                gap: 30px;
+            }
+            
+            .about-why-1-team-hero-title {
+                font-size: clamp(32px, 5vw, 48px);
+                margin-bottom: 30px;
+            }
+            
+            .about-why-1-team-mp {
+                grid-template-columns: 1fr;
+                gap: 30px;
+            }
+            
+            .about-why-1-team-mission, .about-why-1-team-philosophy {
+                flex-direction: row;
+                gap: 20px;
+            }
+            
+            .about-why-1-photo-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .about-why-1-team-card {
+                height: 250px;
+            }
+        }
+
+        @media (max-width: 768px) {
+          .about-why-1-team-hero-title {
+          width: 100%;}
+            .about-why-1-container {
+                padding: 0 20px;
+            }
+            
+            .about-why-1-main {
+                padding: 20px;
+                margin: 15px;
+                border-radius: 20px;
+            }
+            
+            .about-why-1-team-hero {
+                grid-template-columns: 1fr;
+                gap: 40px;
+            }
+            
+            .about-why-1-section-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+                margin-bottom: 40px;
+            }
+            
+            .about-why-1-team-mp {
+                grid-template-columns: 1fr;
+                gap: 30px;
+            }
+            
+            .about-why-1-team-mission, .about-why-1-team-philosophy {
+                flex-direction: column;
+                gap: 15px;
+            }
+            
+            .about-why-1-photo-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 12px;
+            }
+            
+            .about-why-1-team-card {
+                height: 220px;
+            }
+            
+            .about-why-1-member-name {
+                font-size: 16px;
+            }
+            
+            .about-why-1-description {
+                font-size: 13px;
+            }
+            
+            .about-why-1-initials {
+                font-size: 60px;
+            }
+        }
+
+        @media (max-width: 576px) {
+            .about-why-1-container {
+                padding: 0 15px;
+            }
+            
+            .about-why-1-main {
+                padding: 15px;
+                margin: 10px;
+                border-radius: 15px;
+            }
+            
+            .about-why-1-team-hero-title {
+                font-size: 28px;
+                margin-bottom: 25px;
+            }
+            
+            .about-why-1-team-mp {
+                gap: 25px;
+            }
+            
+            .about-why-1-photo-grid {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+            
+            .about-why-1-team-card {
+                height: 300px;
+            }
+            
+            .about-why-1-plus-icon {
+                font-size: 24px;
+            }
+            
+            .about-why-1-mission-content h3 {
+                font-size: 16px;
+            }
+            
+            .about-why-1-mission-content p, .about-why-1-philosophy-content p {
+                font-size: 13px;
+            }
+            
+            .about-why-1-philosophy-intro {
+                font-size: 16px;
+            }
+            
+            .about-why-1-philosophy-intro span {
+                font-size: 14px;
+            }
+            
+            .about-why-1-apply-btn {
+                padding: 10px 20px;
+                font-size: 12px;
+            }
+            
+            .about-why-1-initials {
+                font-size: 70px;
+            }
+        }
+
+        @media (max-width: 400px) {
+            .about-why-1-main {
+                padding: 12px;
+                margin: 8px;
+            }
+            
+            .about-why-1-team-card {
+                height: 250px;
+            }
+            
+            .about-why-1-card-header {
+                padding: 8px 12px;
+            }
+            
+            .about-why-1-info {
+                left: 12px;
+                width: calc(100% - 24px);
+            }
+            
+            .about-why-1-initials {
+                font-size: 60px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Main Content -->
+    <main class="about-why-1-main">
+        <div class="about-why-1-container">
+            <!-- Team -->
+            <section class="about-why-1-section">
+                <div class="about-why-1-team-hero">
+                    <div class="about-why-1-team-content">
+                        <div class="about-why-1-section-header"> 
+                            <h2 class="about-why-1-team-hero-title">The faces <span>behind the projects</span>.</h2>
+                            <span class="about-why-1-section-number"></span>
+                        </div>
+                        
+                        <div class="about-why-1-team-mp">
+                            <div class="about-why-1-team-mission">
+                                <div class="about-why-1-plus-icon">+</div>
+                                <div class="about-why-1-mission-content">
+                                    <h3>Be part of our mission</h3>
+                                    <p>If you're ready to create and collaborate, we'd love to hear from you.</p>
+                                    <button class="about-why-1-apply-btn">Join our team ●</button>
+                                </div>
+                            </div>
+                            
+                            <div class="about-why-1-team-philosophy">
+                                <div class="about-why-1-plus-icon">+</div>
+                                <div class="about-why-1-philosophy-content">
+                                    <p class="about-why-1-philosophy-intro">We believe great work comes from collaboration.
+                                    <span>That's why we work closely with each other to ensure every project meets your goals and exceeds expectations.</span></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="about-why-1-team-photos">
+                        <div class="about-why-1-photo-grid">
+                    
+                            <!-- CEO -->
+                            <div class="about-why-1-team-card">
+                                <div class="about-why-1-team-card-bg"></div>
+                                <div class="about-why-1-initials">VM</div>
+                                <div class="about-why-1-card-header">
+                                    <span class="about-why-1-add-icon">+</span>
+                                    <div class="about-why-1-role-info">
+                                        <div class="about-why-1-role">Founder & CEO</div>
+                                        <div class="about-why-1-company">at z-crew®</div>
+                                    </div>
+                                </div>
+                                <div class="about-why-1-info">
+                                    <div class="about-why-1-member-name">Vivek Mishra</div>
+                                    <div class="about-why-1-description">
+                                        Visionary leader driving innovation and growth, committed to empowering businesses through Zoho solutions and digital transformation.
+                                    </div>
+                                </div>
+                            </div>
+                    
+                            <!-- Business Development -->
+                            <div class="about-why-1-team-card">
+                                <div class="about-why-1-team-card-bg"></div>
+                                <div class="about-why-1-initials">VS</div>
+                                <div class="about-why-1-card-header">
+                                    <span class="about-why-1-add-icon">+</span>
+                                    <div class="about-why-1-role-info">
+                                        <div class="about-why-1-role">Head of Business Development</div>
+                                        <div class="about-why-1-company">at z-crew®</div>
+                                    </div>
+                                </div>
+                                <div class="about-why-1-info">
+                                    <div class="about-why-1-member-name">Viney Shetty</div>
+                                    <div class="about-why-1-description">
+                                        Building strong client partnerships and unlocking opportunities to scale businesses with tailored digital strategies.
+                                    </div>
+                                </div>
+                            </div>
+                    
+                            <!-- Lead Developer -->
+                            <div class="about-why-1-team-card">
+                                <div class="about-why-1-team-card-bg"></div>
+                                <div class="about-why-1-initials">SK</div>
+                                <div class="about-why-1-card-header">
+                                    <span class="about-why-1-add-icon">+</span>
+                                    <div class="about-why-1-role-info">
+                                        <div class="about-why-1-role">Lead Developer</div>
+                                        <div class="about-why-1-company">at z-crew®</div>
+                                    </div>
+                                </div>
+                                <div class="about-why-1-info">
+                                    <div class="about-why-1-member-name">Saurabh Kumar</div>
+                                    <div class="about-why-1-description">
+                                        Engineering robust, scalable, and future-ready solutions by blending creativity with cutting-edge technology.
+                                    </div>
+                                </div>
+                            </div>
+                    
+                            <!-- Zoho Specialist -->
+                            <div class="about-why-1-team-card">
+                                <div class="about-why-1-team-card-bg"></div>
+                                <div class="about-why-1-initials">VY</div>
+                                <div class="about-why-1-card-header">
+                                    <span class="about-why-1-add-icon">+</span>
+                                    <div class="about-why-1-role-info">
+                                        <div class="about-why-1-role">Zoho Solutions Specialist</div>
+                                        <div class="about-why-1-company">at z-crew®</div>
+                                    </div>
+                                </div>
+                                <div class="about-why-1-info">
+                                    <div class="about-why-1-member-name">Vinod Yadav</div>
+                                    <div class="about-why-1-description">
+                                        Driving operational efficiency by customizing and deploying Zoho apps to fit unique business needs.
+                                    </div>
+                                </div>
+                            </div>
+                    
+                        </div>
+                    </div>
+                    
+                </div>
+            </section>
+        </div>
+    </main>
+</body>
+</html>
