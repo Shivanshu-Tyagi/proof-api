@@ -15,7 +15,7 @@ export const getJwtSecret = () => {
 export const getFrontendUrls = () =>
   (process.env.FRONTEND_URL || 'http://localhost:5173')
     .split(',')
-    .map((url) => url.trim())
+    .map((url) => url.trim().replace(/\/+$/, '')) // browsers send origins without a trailing slash
     .filter(Boolean);
 
 // Fail fast at boot instead of at the first request
