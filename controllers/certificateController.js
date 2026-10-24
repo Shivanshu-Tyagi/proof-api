@@ -319,7 +319,7 @@ export const trackShare = async (req, res) => {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    const validPlatforms = ['twitter', 'facebook', 'linkedin', 'whatsapp', 'email'];
+    const validPlatforms = ['web', 'twitter', 'facebook', 'linkedin', 'whatsapp', 'email'];
     if (platform && !validPlatforms.includes(platform)) {
       return res.status(400).json({ message: 'Invalid platform' });
     }

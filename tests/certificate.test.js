@@ -81,6 +81,11 @@ describe('certificate artwork', () => {
     expect((await request(app).get(`/api/verify/${number}/image`)).statusCode).toEqual(404);
   });
 
+  it('records a share from the website ("web") and rejects unknown platforms', async () => {
+    expect((await as(a, request(app).post(`/api/certificates/${cert._id}/share`)).send({ platform: 'web' })).statusCode).toEqual(200);
+    expect((await as(a, request(app).post(`/api/certificates/${cert._id}/share`)).send({ platform: 'carrier-pigeon' })).statusCode).toEqual(400);
+  });
+
   it('escapes names so they cannot break the artwork', async () => {
     await User.updateOne({ _id: a.user.id }, { firstName: '<b>&"Maya' });
     const res = await svgOf(as(a, request(app).get(`/api/certificates/${cert._id}/image`)));
