@@ -113,7 +113,8 @@ async function start() {
     // Ensure partial unique index for relationships (allows re-relationship after breakup)
     try {
       const collection = mongoose.connection.collection('relationships');
-      const indexes = await collection.indexes();
+      // A brand-new database has no collection yet (error code 26): nothing legacy to drop
+      const indexes = await collection.indexes().catch((err) => (err.code === 26 ? [] : Promise.reject(err)));
       const hasLegacy = indexes.find(i => i.name === 'initiator_1_partner_1' && !i.partialFilterExpression);
       if (hasLegacy) {
         console.log('🔧 Dropping legacy initiator_1_partner_1 index to apply partial unique index');
