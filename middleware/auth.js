@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import { getJwtSecret } from '../config.js';
 
 export const authenticate = async (req, res, next) => {
   try {
@@ -9,7 +10,7 @@ export const authenticate = async (req, res, next) => {
       return res.status(401).json({ message: 'Access denied. No token provided.' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
+    const decoded = jwt.verify(token, getJwtSecret());
     const user = await User.findById(decoded.userId).select('-password');
     
     if (!user) {
@@ -18,6 +19,10 @@ export const authenticate = async (req, res, next) => {
 
     if (!user.isActive) {
       return res.status(401).json({ message: 'Account is deactivated.' });
+    }
+
+    if (user.passwordChangedAt && decoded.iat < Math.floor(user.passwordChangedAt.getTime() / 1000)) {
+      return res.status(401).json({ message: 'Password was changed. Please log in again.' });
     }
 
     req.user = user;
@@ -38,7 +43,7 @@ export const optionalAuth = async (req, res, next) => {
     const token = req.header('Authorization')?.replace('Bearer ', '');
     
     if (token) {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
+      const decoded = jwt.verify(token, getJwtSecret());
       const user = await User.findById(decoded.userId).select('-password');
       
       if (user && user.isActive) {

@@ -94,7 +94,7 @@ termSchema.index({ category: 1 });
 // Virtual for agreement status
 termSchema.virtual('isFullyAgreed').get(function() {
   // Get the relationship to check how many people should agree
-  return this.agreedBy.length >= 2; // Assuming 2 people in relationship
+  return (this.agreedBy?.length ?? 0) >= 2; // Assuming 2 people in relationship
 });
 
 // Method to check if user has agreed

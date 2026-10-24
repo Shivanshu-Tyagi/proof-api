@@ -1,4 +1,7 @@
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
+import { getJwtSecret, getFrontendUrls } from '../config.js';
+import { sendMail } from '../utils/mailer.js';
 import { validationResult } from 'express-validator';
 import User from '../models/User.js';
 import multer from 'multer'; // Import multer
@@ -8,14 +11,13 @@ import fs from 'fs'; // Import fs for file system operations
 const generateToken = (userId) => {
   return jwt.sign(
     { userId },
-    process.env.JWT_SECRET || 'fallback_secret',
+    getJwtSecret(),
     { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
   );
 };
 
 export const signup = async (req, res) => {
   try {
-    console.log("=======1");
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({
@@ -23,14 +25,12 @@ export const signup = async (req, res) => {
         errors: errors.array()
       });
     }
-    console.log("=======2");
     const { username, email, password, firstName, lastName } = req.body;
 
     // Check if user already exists
     const existingUser = await User.findOne({
       $or: [{ email }, { username }]
     });
-    console.log("=======3");
     if (existingUser) {
       return res.status(400).json({
         message: existingUser.email === email 
@@ -38,8 +38,6 @@ export const signup = async (req, res) => {
           : 'Username already taken'
       });
     }
-    console.log('🟢 Received signup request');
-    console.log('🟢 Data:', req.body);
     // Create new user
     const user = new User({
       username,
@@ -49,11 +47,7 @@ export const signup = async (req, res) => {
       lastName
     });
 
-    console.log('🟡 Before saving user');
-
     await user.save();
-    
-    console.log('🟢 After saving user');
     
 
     // Generate token
@@ -69,6 +63,7 @@ export const signup = async (req, res) => {
         firstName: user.firstName,
         lastName: user.lastName,
         fullName: user.fullName,
+        registrationId: user.registrationId,
         avatar: user.avatar
       }
     });
@@ -124,6 +119,7 @@ export const login = async (req, res) => {
         firstName: user.firstName,
         lastName: user.lastName,
         fullName: user.fullName,
+        registrationId: user.registrationId,
         avatar: user.avatar,
         preferences: user.preferences
       }
@@ -150,6 +146,7 @@ export const getMe = async (req, res) => {
         firstName: user.firstName,
         lastName: user.lastName,
         fullName: user.fullName,
+        registrationId: user.registrationId,
         avatar: user.avatar,
         bio: user.bio,
         dateOfBirth: user.dateOfBirth,
@@ -203,6 +200,7 @@ export const updateProfile = async (req, res) => {
         firstName: user.firstName,
         lastName: user.lastName,
         fullName: user.fullName,
+        registrationId: user.registrationId,
         avatar: user.avatar,
         bio: user.bio,
         dateOfBirth: user.dateOfBirth,
@@ -294,16 +292,16 @@ export const searchUsers = async (req, res) => {
       });
     }
     
-    // Find users whose username, email, firstName, or lastName matches the query string (case-insensitive)
+    // Match on name or username only. Email addresses are never searchable or returned.
+    const safeQ = q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const users = await User.find({
       $or: [
-        { username: { $regex: q, $options: 'i' } },
-        { email: { $regex: q, $options: 'i' } },
-        { firstName: { $regex: q, $options: 'i' } },
-        { lastName: { $regex: q, $options: 'i' } }
+        { username: { $regex: safeQ, $options: 'i' } },
+        { firstName: { $regex: safeQ, $options: 'i' } },
+        { lastName: { $regex: safeQ, $options: 'i' } }
       ],
       _id: { $ne: req.user.id } // Exclude the current user from search results
-    }).select('firstName lastName username email avatar bio createdAt'); // Select relevant fields
+    }).select('firstName lastName username avatar bio createdAt').limit(20);
 
     res.json({
       success: true,
@@ -313,7 +311,6 @@ export const searchUsers = async (req, res) => {
         lastName: user.lastName,
         fullName: user.fullName,
         username: user.username,
-        email: user.email,
         avatar: user.avatar,
         bio: user.bio,
         createdAt: user.createdAt
@@ -322,5 +319,169 @@ export const searchUsers = async (req, res) => {
   } catch (error) {
     console.error('Search users error:', error);
     res.status(500).json({ message: 'Server error during user search' });
+  }
+};
+
+// Find a single user by registration ID
+export const searchUserByRegistrationId = async (req, res) => {
+  try {
+    const { registrationId } = req.query;
+    if (!registrationId || registrationId.length < 8 || registrationId.length > 12) {
+      return res.status(400).json({
+        message: 'Validation failed',
+        errors: [{
+          type: 'field',
+          value: registrationId || '',
+          msg: 'Registration ID must be between 8 and 12 characters',
+          path: 'registrationId',
+          location: 'query'
+        }]
+      });
+    }
+
+    const user = await User.findOne({ registrationId }).select('firstName lastName username avatar bio registrationId');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found with this registration ID' });
+    }
+
+    res.status(200).json({
+      user: {
+        _id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        fullName: user.fullName,
+        username: user.username,
+        avatar: user.avatar,
+        bio: user.bio,
+        registrationId: user.registrationId
+      }
+    });
+  } catch (error) {
+    console.error('Search by registration ID error:', error);
+    res.status(500).json({ message: 'Server error during user search' });
+  }
+};
+
+// Confirms whether a full email address belongs to someone, without ever returning it.
+// Exact match only, so it cannot be used to browse or guess at addresses.
+export const searchUsersByEmail = async (req, res) => {
+  try {
+    const q = (req.query.q || '').trim().toLowerCase();
+    if (!/^\S+@\S+\.\S+$/.test(q)) {
+      return res.json({ users: [] });
+    }
+    const user = await User.findOne({ email: q, _id: { $ne: req.user.id }, isActive: true })
+      .select('firstName lastName username avatar');
+
+    res.json({
+      users: user ? [{
+        _id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        username: user.username,
+        avatar: user.avatar
+      }] : []
+    });
+  } catch (error) {
+    console.error('Search users by email error:', error);
+    res.status(500).json({ message: 'Server error during email search' });
+  }
+};
+
+
+const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
+
+const userPayload = (user) => ({
+  id: user._id,
+  username: user.username,
+  email: user.email,
+  firstName: user.firstName,
+  lastName: user.lastName,
+  fullName: user.fullName,
+  registrationId: user.registrationId,
+  avatar: user.avatar,
+  preferences: user.preferences
+});
+
+export const changePassword = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
+    }
+
+    const { currentPassword, newPassword } = req.body;
+    const user = await User.findById(req.user.id);
+    if (!user || !(await user.comparePassword(currentPassword))) {
+      return res.status(401).json({ message: 'Current password is incorrect' });
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    // Other sessions are invalidated; hand this session a fresh token
+    res.json({ message: 'Password changed successfully', token: generateToken(user._id) });
+  } catch (error) {
+    console.error('Change password error:', error);
+    res.status(500).json({ message: 'Server error changing password' });
+  }
+};
+
+// Always answers the same way so the endpoint can't be used to discover accounts
+export const forgotPassword = async (req, res) => {
+  const genericResponse = { message: 'If an account exists for that email, a reset link has been sent.' };
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
+    }
+
+    const user = await User.findOne({ email: req.body.email, isActive: true });
+    if (user) {
+      const token = crypto.randomBytes(32).toString('hex');
+      user.passwordResetToken = sha256(token);
+      user.passwordResetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+      await user.save({ validateBeforeSave: false });
+
+      const link = `${getFrontendUrls()[0]}/reset-password/${token}`;
+      await sendMail({
+        to: user.email,
+        subject: 'Reset your password',
+        text: `Hi ${user.firstName},\n\nUse the link below to reset your password. It expires in 1 hour.\n\n${link}\n\nIf you did not request this, you can ignore this email.`
+      });
+    }
+    res.json(genericResponse);
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    // Don't reveal whether the lookup or the mail step failed
+    res.json(genericResponse);
+  }
+};
+
+export const resetPassword = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
+    }
+
+    const user = await User.findOne({
+      passwordResetToken: sha256(req.params.token),
+      passwordResetExpires: { $gt: new Date() }
+    }).select('+passwordResetToken +passwordResetExpires');
+
+    if (!user) {
+      return res.status(400).json({ message: 'Reset link is invalid or has expired' });
+    }
+
+    user.password = req.body.password;
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    await user.save();
+
+    res.json({ message: 'Password reset successfully', token: generateToken(user._id), user: userPayload(user) });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ message: 'Server error resetting password' });
   }
 };

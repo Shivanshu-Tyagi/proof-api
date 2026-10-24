@@ -9,7 +9,7 @@ const certificateSchema = new mongoose.Schema({
   relatedId: {
     type: mongoose.Schema.Types.ObjectId,
     required: true,
-    refPath: 'relatedTo' // Dynamically reference the model based on relatedTo
+    refPath: 'relatedTo'  
   },
   title: {
     type: String,
@@ -79,7 +79,7 @@ const certificateSchema = new mongoose.Schema({
   },
   sharing: {
     isPublic: { type: Boolean, default: false },
-    sharedOn: [String], // platforms where shared
+    sharedOn: [String], 
     shareCount: { type: Number, default: 0 }
   },
   stats: {
@@ -91,7 +91,6 @@ const certificateSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Generate unique certificate number before saving
 certificateSchema.pre('save', function(next) {
   if (!this.metadata.certificateNumber) {
     const timestamp = Date.now().toString(36);
@@ -102,7 +101,6 @@ certificateSchema.pre('save', function(next) {
 });
 
 // Indexes
-certificateSchema.index({ 'metadata.certificateNumber': 1 }, { unique: true });
 certificateSchema.index({ type: 1 });
 certificateSchema.index({ level: 1 });
 certificateSchema.index({ relatedId: 1 });

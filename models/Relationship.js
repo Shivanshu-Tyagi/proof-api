@@ -109,7 +109,9 @@ const relationshipSchema = new mongoose.Schema({
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User'
     },
-    grantedAt: Date
+    grantedAt: Date,
+    // Absent means the grant lasts until the owner revokes it
+    expiresAt: Date
   },
   stats: {
     trustLevel: {

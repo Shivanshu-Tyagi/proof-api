@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import { expect } from 'chai';
 import sinon from 'sinon';
 import { searchUserByRegistrationId } from '../controllers/authController.js';
@@ -65,12 +66,13 @@ describe('authController', () => {
       expect(res.status.calledWith(200)).to.be.true;
       expect(res.json.calledWith({
         user: {
-          id: mockUser._id,
-          username: mockUser.username,
+          _id: mockUser._id,
           firstName: mockUser.firstName,
           lastName: mockUser.lastName,
           fullName: mockUser.fullName,
+          username: mockUser.username,
           avatar: mockUser.avatar,
+          bio: mockUser.bio,
           registrationId: mockUser.registrationId
         }
       })).to.be.true;

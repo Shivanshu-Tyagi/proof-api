@@ -1,7 +1,7 @@
 import { validationResult } from 'express-validator';
 import Activity from '../models/Activity.js';
 import Relationship from '../models/Relationship.js';
-import Notification from '../models/Notification.js';
+import { notify } from '../utils/notify.js';
 
 export const createActivity = async (req, res) => {
   try {
@@ -23,6 +23,11 @@ export const createActivity = async (req, res) => {
 
     if (!relationship.includesUser(req.user.id)) {
       return res.status(403).json({ message: 'Access denied' });
+    }
+
+    // Either person can switch this off in the relationship's settings
+    if (relationship.settings?.permissions?.createActivities === false) {
+      return res.status(403).json({ message: 'Adding moments is turned off for this relationship' });
     }
 
     if (relationship.status !== 'active') {
@@ -71,7 +76,7 @@ export const createActivity = async (req, res) => {
 
     // Notify the other person in the relationship
     const partnerId = relationship.getPartner(req.user.id);
-    await Notification.create({
+    await notify({
       recipient: partnerId,
       sender: req.user.id,
       type: 'activity_added',

@@ -1,0 +1,24 @@
+# Render Blueprint for the API (free plan). Deploy: Render dashboard > New > Blueprint > pick this repo.
+# The database is MongoDB Atlas (free M0); the frontend lives on a static host. See DEPLOY.md.
+services:
+  - type: web
+    name: proof-api
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: node server.js
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY # Render sits behind one proxy; needed for correct rate limiting
+        value: 1
+      - key: JWT_SECRET # generated once, long and random
+        generateValue: true
+      - key: MONGO_URI # your Atlas connection string, entered in the dashboard
+        sync: false
+      - key: FRONTEND_URL # the address of your frontend, for example https://proof.vercel.app
+        sync: false

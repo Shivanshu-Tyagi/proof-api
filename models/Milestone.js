@@ -109,10 +109,12 @@ milestoneSchema.virtual('progressPercentage').get(function() {
   if (this.status === 'completed') return 100;
   if (this.status === 'failed') return 0;
   
-  const totalCriteria = this.criteria.customCriteria.length;
+  // Partially selected (populated) documents may not carry criteria
+  const criteria = this.criteria?.customCriteria ?? [];
+  const totalCriteria = criteria.length;
   if (totalCriteria === 0) return 0;
   
-  const completedCriteria = this.criteria.customCriteria.filter(c => c.completed).length;
+  const completedCriteria = criteria.filter(c => c.completed).length;
   return Math.round((completedCriteria / totalCriteria) * 100);
 });
 

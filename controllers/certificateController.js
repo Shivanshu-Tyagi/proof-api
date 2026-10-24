@@ -1,68 +1,43 @@
+import mongoose from 'mongoose';
 import { validationResult } from 'express-validator';
 import Certificate from '../models/Certificate.js';
 import Relationship from '../models/Relationship.js';
-import User from '../models/User.js'; // Import User model to populate user details
-import multer from 'multer'; // Import multer
-import path from 'path'; // Import path for directory handling
-import fs from 'fs'; // Import fs for file system operations
-import sharp from 'sharp'; // Import sharp for image manipulation
+import Milestone from '../models/Milestone.js';
+import { certificatePng, certificateSvg } from '../utils/certificateArt.js';
 
-export const generateCertificateImage = async (certificateDetails) => {
-  const { title, description, recipients, type, level, design } = certificateDetails;
+const idOf = (v) => String(v?._id ?? v);
 
-  const width = 800;
-  const height = 600;
-  const backgroundColor = design?.colors?.primary || '#3b82f6'; // Default to blue
-  const textColor = design?.colors?.secondary || '#ffffff'; // Default to white
-  const fontFamily = 'sans-serif'; // Or a more stylish font if available
-
-  // Create SVG for text elements
-  const titleSvg = `<svg width="${width}" height="${height}"><text x="50%" y="150" font-family="${fontFamily}" font-size="48" fill="${textColor}" text-anchor="middle">${title}</text></svg>`;
-  const descriptionSvg = `<svg width="${width}" height="${height}"><text x="50%" y="250" font-family="${fontFamily}" font-size="24" fill="${textColor}" text-anchor="middle">${description}</text></svg>`;
-  
-  const recipientNames = recipients.map(r => r.user.firstName + ' ' + r.user.lastName).join(' & ');
-  const recipientSvg = `<svg width="${width}" height="${height}"><text x="50%" y="350" font-family="${fontFamily}" font-size="36" fill="${textColor}" text-anchor="middle">Awarded to: ${recipientNames}</text></svg>`;
-
-  const typeLevelSvg = `<svg width="${width}" height="${height}"><text x="50%" y="450" font-family="${fontFamily}" font-size="20" fill="${textColor}" text-anchor="middle">Type: ${type.replace(/_/g, ' ').toUpperCase()} | Level: ${level.toUpperCase()}</text></svg>`;
-
-  const filename = `certificate-${Date.now()}.png`;
-  const outputPath = path.join('uploads', 'certificates', filename);
-  const absoluteOutputPath = path.resolve(outputPath);
-
-  try {
-    await sharp({
-      create: {
-        width: width,
-        height: height,
-        channels: 4,
-        background: backgroundColor,
-      },
-    })
-      .composite([
-        { input: Buffer.from(titleSvg), gravity: 'northwest' }, // Position title
-        { input: Buffer.from(descriptionSvg), gravity: 'northwest' }, // Position description
-        { input: Buffer.from(recipientSvg), gravity: 'northwest' }, // Position recipients
-        { input: Buffer.from(typeLevelSvg), gravity: 'northwest' }, // Position type/level
-      ])
-      .toFile(absoluteOutputPath);
-
-    return outputPath; // Return the relative path for database storage
-  } catch (error) {
-    console.error('Error generating certificate image:', error);
-    throw new Error('Failed to generate certificate image');
+// Everything the artwork needs. The public version carries no relationship title or dates.
+const artDataFor = async (certificate, { isPublic = false } = {}) => {
+  await certificate.populate('recipients.user', 'firstName lastName');
+  const data = {
+    names: certificate.recipients.map((r) => `${r.user?.firstName ?? ''} ${r.user?.lastName ?? ''}`.trim()).filter(Boolean),
+    level: certificate.level,
+    number: certificate.metadata?.certificateNumber,
+    issuedAt: certificate.createdAt,
+    kind: certificate.relatedTo === 'milestone' ? 'milestone' : 'relationship',
+    isPublic,
+  };
+  if (!isPublic) {
+    const longDate = (d) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    if (certificate.relatedTo === 'milestone') {
+      const milestone = await Milestone.findById(certificate.relatedId).select('title completedDate');
+      data.kind = 'milestone';
+      data.subject = milestone?.title ?? certificate.title.replace(/ Achievement$/, '');
+      data.dateLine = milestone?.completedDate ? `Completed ${longDate(milestone.completedDate)}` : '';
+    } else {
+      const relationship = certificate.relatedTo === 'relationship' ? await Relationship.findById(certificate.relatedId).select('title acceptedDate startDate') : null;
+      const since = relationship?.acceptedDate ?? relationship?.startDate;
+      data.subject = relationship?.title ?? certificate.title.replace(/^Certificate of /, '');
+      data.dateLine = since ? `Together since ${longDate(since)}` : '';
+    }
   }
+  return data;
 };
 
+// Generate relationship certificate
 export const generateRelationshipCertificate = async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        message: 'Validation failed',
-        errors: errors.array()
-      });
-    }
-
     const { relationshipId } = req.params;
     const userId = req.user.id;
 
@@ -74,98 +49,88 @@ export const generateRelationshipCertificate = async (req, res) => {
       return res.status(404).json({ message: 'Relationship not found' });
     }
 
-    console.log('Current User ID:', userId);
-    console.log('Relationship Initiator:', relationship.initiator._id);
-    console.log('Relationship Partner:', relationship.partner._id);
-    console.log('Includes User Check:', relationship.includesUser(userId));
-
     if (!relationship.includesUser(userId)) {
-      return res.status(403).json({ message: 'Access denied. You are not part of this relationship.' });
+      return res.status(403).json({ message: 'You are not part of this relationship' });
     }
 
-    // Ensure both users are available
-    if (!relationship.initiator || !relationship.partner) {
-      return res.status(500).json({ message: 'Could not retrieve full user details for the relationship.' });
-    }
-
-    const initiatorFullName = `${relationship.initiator.firstName} ${relationship.initiator.lastName}`;
-    const partnerFullName = `${relationship.partner.firstName} ${relationship.partner.lastName}`;
-    const partners = [relationship.initiator, relationship.partner];
-    
-    // Generate certificate image
-    const certificateImageUrl = await generateCertificateImage({
-      title: `Certificate of ${relationship.title} Relationship`,
-      description: `This certifies the ${relationship.title} relationship between ${initiatorFullName} and ${partnerFullName}, with a current status of '${relationship.status}'.`,
-      recipients: partners.map(p => ({ user: p, firstName: p.firstName, lastName: p.lastName })), // Pass full user objects for image generation
-      type: 'relationship',
-      level: 'gold',
-      design: {
-        template: 'romantic',
-        colors: { primary: '#ec4899', secondary: '#f0abfc', accent: '#f59e0b' },
-        icon: 'heart',
+    // Check if certificate already exists
+    let certificate = null;
+    if (relationship.latestCertificate) {
+      certificate = await Certificate.findById(relationship.latestCertificate);
+      if (certificate && !certificate.metadata.isRevoked) {
+        console.log(`ℹ️  Certificate already exists: ${certificate._id}`);
+        return res.status(200).json({
+          message: 'Certificate already exists',
+          certificate
+        });
       }
-    });
+    }
 
-    const newCertificate = await Certificate.create({
+    const partners = [relationship.initiator, relationship.partner];
+
+    // Create certificate record
+    certificate = await Certificate.create({
       relatedTo: 'relationship',
       relatedId: relationship._id,
-      title: `Certificate of ${relationship.title} Relationship`,
-      description: `This certifies the ${relationship.title} relationship between ${initiatorFullName} and ${partnerFullName}, with a current status of '${relationship.status}'.`,
+      title: `Certificate of ${relationship.title}`,
+      description: `Celebrating the ${relationship.title} between ${relationship.initiator.firstName} ${relationship.initiator.lastName} and ${relationship.partner.firstName} ${relationship.partner.lastName}`,
       type: 'relationship',
-      level: 'gold', // Default level for relationship certificates
-      recipients: partners.map(p => ({ user: p._id, awardedAt: new Date() })),
+      level: 'gold',
+      recipients: partners.map(p => ({
+        user: p._id,
+        awardedAt: new Date()
+      })),
       design: {
         template: 'romantic',
-        colors: { primary: '#ec4899', secondary: '#f0abfc', accent: '#f59e0b' },
-        icon: 'heart',
-        backgroundImage: '/images/certificate-background.png',
-        imageUrl: certificateImageUrl, // Store the generated image URL
+        colors: {
+          primary: '#ec4899',
+          secondary: '#f0abfc',
+          accent: '#f59e0b'
+        }
       },
       metadata: {
-        issuedBy: 'RelationApp',
-        validUntil: null, // Relationship certificates don't usually expire
-        customData: { relationshipStatus: relationship.status }
+        issuedBy: 'Proof',
+        validUntil: null
+      },
+      stats: {
+        viewCount: 0,
+        downloadCount: 0,
+        shareCount: 0
       }
     });
 
-    // Update the relationship with the new certificate ID
-    relationship.latestCertificate = newCertificate._id;
+    // Update relationship with latest certificate
+    relationship.latestCertificate = certificate._id;
     await relationship.save();
 
-    res.status(201).json({
-      message: 'Relationship certificate generated successfully',
-      certificate: newCertificate
-    });
+    console.log(`✅ Certificate created: ${certificate._id}`);
 
+    res.status(201).json({
+      message: 'Certificate generated successfully',
+      certificate
+    });
   } catch (error) {
-    console.error('Generate relationship certificate error:', error);
-    res.status(500).json({ message: 'Server error generating relationship certificate' });
+    console.error('❌ Error generating certificate:', error);
+    res.status(500).json({ 
+      message: 'Failed to generate certificate',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
 
+// Get all certificates for user
 export const getCertificates = async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        message: 'Validation failed',
-        errors: errors.array()
-      });
-    }
-
-    const { relationshipId } = req.params; // This will be undefined for /certificates
-    const { type, level } = req.query;
+    const { relationshipId } = req.params;
 
     const filter = {
       'recipients.user': req.user.id
     };
 
-    // If relationshipId is provided, filter by it and set relatedTo
     if (relationshipId) {
-      filter.relatedTo = 'relationship';
       filter.relatedId = relationshipId;
-      
-      // Additionally, verify relationship exists and user is part of it
+      filter.relatedTo = 'relationship';
+
       const relationship = await Relationship.findById(relationshipId);
       if (!relationship) {
         return res.status(404).json({ message: 'Relationship not found' });
@@ -176,215 +141,209 @@ export const getCertificates = async (req, res) => {
       }
     }
 
-    if (type) filter.type = type;
-    if (level) filter.level = level;
-
     const certificates = await Certificate.find(filter)
+      .populate('recipients.user', 'firstName lastName avatar')
       .populate({
         path: 'relatedId',
+        // relatedTo stores 'relationship' but the model is registered as 'Relationship';
+        // relationships are the only certificate subject generated today
+        model: 'Relationship',
         select: 'title type initiator partner',
-        // Use a dynamic model based on relatedTo for population
-        // This requires an explicit model for each relatedTo type that needs population
-        // For simplicity, we'll handle only 'relationship' and 'milestone' for now.
-        // If relatedTo is not 'relationship' or 'milestone', relatedId will not be populated with a document from the default model.
-        // The frontend should then handle cases where relatedId is not fully populated.
-        // A more robust solution might involve multiple .populate calls or a virtual populate.
-        get model() { 
-          if (this.relatedTo === 'relationship') return 'Relationship';
-          if (this.relatedTo === 'milestone') return 'Milestone';
-          return null; // Don't populate if relatedTo is not a known type
-        }
+        populate: [
+          { path: 'initiator', select: 'firstName lastName' },
+          { path: 'partner', select: 'firstName lastName' }
+        ]
       })
-      .populate('recipients.user', 'username firstName lastName avatar')
       .sort({ createdAt: -1 });
 
     res.json({ certificates });
   } catch (error) {
-    console.error('Get certificates error:', error);
-    res.status(500).json({ message: 'Server error fetching certificates' });
+    console.error('❌ Error fetching certificates:', error);
+    res.status(500).json({ message: 'Failed to fetch certificates' });
   }
 };
 
+// Get single certificate
 export const getCertificate = async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        message: 'Validation failed',
-        errors: errors.array()
-      });
-    }
-
     const certificate = await Certificate.findById(req.params.id)
-      .populate({ path: 'relatedId', select: 'title type initiator partner', model: 'Relationship' })
-      .populate('recipients.user', 'username firstName lastName avatar');
+      .populate('recipients.user', 'firstName lastName avatar');
 
     if (!certificate) {
       return res.status(404).json({ message: 'Certificate not found' });
     }
 
-    // Check if user is a recipient of this certificate
-    const isRecipient = certificate.recipients.some(recipient => 
-      recipient.user._id.equals(req.user.id)
+    // Check if user is recipient
+    const isRecipient = certificate.recipients.some(r => 
+      r.user._id.toString() === req.user.id.toString()
     );
 
     if (!isRecipient) {
       return res.status(403).json({ message: 'Access denied' });
-    }
-
-    // Check if certificate is valid
-    if (!certificate.isValid()) {
-      return res.status(400).json({ message: 'Certificate is no longer valid' });
     }
 
     // Increment view count
-    await certificate.incrementView();
+    certificate.stats.viewCount = (certificate.stats.viewCount || 0) + 1;
+    await certificate.save();
 
     res.json({ certificate });
   } catch (error) {
-    console.error('Get certificate error:', error);
-    res.status(500).json({ message: 'Server error fetching certificate' });
+    console.error('❌ Error fetching certificate:', error);
+    res.status(500).json({ message: 'Failed to fetch certificate' });
   }
 };
 
-export const downloadCertificate = async (req, res) => {
+// Turn the public verify link on or off for one certificate (recipients only)
+export const setSharing = async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({
-        message: 'Validation failed',
-        errors: errors.array()
-      });
+      return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
     }
 
-    const certificate = await Certificate.findById(req.params.id)
-      .populate({ path: 'relatedId', select: 'title type', model: 'Relationship' })
-      .populate('recipients.user', 'username firstName lastName avatar');
-
+    const certificate = await Certificate.findById(req.params.id);
     if (!certificate) {
       return res.status(404).json({ message: 'Certificate not found' });
     }
-
-    // Check if user is a recipient of this certificate
-    const isRecipient = certificate.recipients.some(recipient => 
-      recipient.user._id.equals(req.user.id)
-    );
-
+    const isRecipient = certificate.recipients.some(r => r.user.toString() === req.user.id.toString());
     if (!isRecipient) {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    // Check if certificate is valid
-    if (!certificate.isValid()) {
-      return res.status(400).json({ message: 'Certificate is no longer valid' });
-    }
-
-    // Increment download count
-    certificate.stats.downloadCount += 1;
+    certificate.sharing.isPublic = req.body.isPublic === true;
     await certificate.save();
-
-    // In a real implementation, you would generate a PDF or image here
-    // For now, we'll return the certificate data with a download flag
-    res.json({
-      message: 'Certificate ready for download',
-      certificate,
-      downloadUrl: `/api/certificates/${certificate._id}/file` // This would be the actual file URL
-    });
+    res.json({ message: certificate.sharing.isPublic ? 'Verify link is on' : 'Verify link is off', sharing: certificate.sharing });
   } catch (error) {
-    console.error('Download certificate error:', error);
-    res.status(500).json({ message: 'Server error downloading certificate' });
+    console.error('❌ Error updating certificate sharing:', error);
+    res.status(500).json({ message: 'Failed to update sharing' });
   }
 };
 
-export const shareCertificate = async (req, res) => {
+// Public: confirms a certificate is genuine. Only names, level and date are exposed,
+// and only when a recipient has switched the link on.
+export const verifyCertificate = async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        message: 'Validation failed',
-        errors: errors.array()
-      });
+    const number = String(req.params.number || '').trim().toUpperCase();
+    const certificate = await Certificate.findOne({ 'metadata.certificateNumber': number })
+      .populate('recipients.user', 'firstName lastName');
+
+    if (!certificate || !certificate.sharing?.isPublic) {
+      return res.status(404).json({ message: 'No shared certificate found for that number' });
     }
 
-    const { platform } = req.body;
+    res.json({
+      verified: certificate.isValid(),
+      revoked: !!certificate.metadata?.isRevoked,
+      number: certificate.metadata.certificateNumber,
+      title: certificate.title,
+      level: certificate.level,
+      issuedAt: certificate.createdAt,
+      people: certificate.recipients.map(r => `${r.user?.firstName ?? ''} ${r.user?.lastName ?? ''}`.trim())
+    });
+  } catch (error) {
+    console.error('❌ Error verifying certificate:', error);
+    res.status(500).json({ message: 'Failed to verify certificate' });
+  }
+};
 
+const ownCertificate = async (req, res) => {
+  const certificate = mongoose.isValidObjectId(req.params.id) ? await Certificate.findById(req.params.id) : null;
+  if (!certificate) { res.status(404).json({ message: 'Certificate not found' }); return null; }
+  if (!certificate.recipients.some((r) => idOf(r.user) === String(req.user.id))) {
+    res.status(403).json({ message: 'Access denied' });
+    return null;
+  }
+  return certificate;
+};
+
+// The certificate artwork for the holders to look at (not counted as a download)
+export const getCertificateImage = async (req, res) => {
+  try {
+    const certificate = await ownCertificate(req, res);
+    if (!certificate) return;
+    res.set({ 'Content-Type': 'image/svg+xml; charset=utf-8', 'Cache-Control': 'private, max-age=300' });
+    res.send(certificateSvg(await artDataFor(certificate)));
+  } catch (error) {
+    console.error('❌ Error rendering certificate:', error);
+    res.status(500).json({ message: 'Failed to load certificate' });
+  }
+};
+
+// Send the certificate as a PNG download and count it
+export const downloadCertificateFile = async (req, res) => {
+  try {
+    const certificate = await ownCertificate(req, res);
+    if (!certificate) return;
+    const png = await certificatePng(await artDataFor(certificate));
+    certificate.stats.downloadCount = (certificate.stats.downloadCount || 0) + 1;
+    await certificate.save();
+    res.set({ 'Content-Type': 'image/png', 'Content-Disposition': `attachment; filename="certificate-${certificate._id}.png"` });
+    res.send(png);
+  } catch (error) {
+    console.error('❌ Error downloading certificate:', error);
+    res.status(500).json({ message: 'Failed to download certificate' });
+  }
+};
+
+// Public: the shareable artwork, only while the holders have the verify link switched on
+export const verifyCertificateImage = async (req, res) => {
+  try {
+    const number = String(req.params.number || '').trim().toUpperCase();
+    const certificate = await Certificate.findOne({ 'metadata.certificateNumber': number });
+    if (!certificate || !certificate.sharing?.isPublic) {
+      return res.status(404).json({ message: 'No shared certificate found for that number' });
+    }
+    res.set({ 'Content-Type': 'image/svg+xml; charset=utf-8', 'Cache-Control': 'public, max-age=300' });
+    res.send(certificateSvg(await artDataFor(certificate, { isPublic: true })));
+  } catch (error) {
+    console.error('❌ Error rendering shared certificate:', error);
+    res.status(500).json({ message: 'Failed to load certificate' });
+  }
+};
+
+// Track certificate share
+export const trackShare = async (req, res) => {
+  try {
+    const { platform } = req.body;
     const certificate = await Certificate.findById(req.params.id);
 
     if (!certificate) {
       return res.status(404).json({ message: 'Certificate not found' });
     }
 
-    // Check if user is a recipient of this certificate
-    const isRecipient = certificate.recipients.some(recipient => 
-      recipient.user.equals(req.user.id)
+    const isRecipient = certificate.recipients.some(r => 
+      r.user.toString() === req.user.id.toString()
     );
 
     if (!isRecipient) {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    // Check if certificate is valid
-    if (!certificate.isValid()) {
-      return res.status(400).json({ message: 'Certificate is no longer valid' });
+    const validPlatforms = ['twitter', 'facebook', 'linkedin', 'whatsapp', 'email'];
+    if (platform && !validPlatforms.includes(platform)) {
+      return res.status(400).json({ message: 'Invalid platform' });
     }
 
-    // Update sharing stats
+    if (!certificate.sharing) {
+      certificate.sharing = { sharedOn: [], shareCount: 0 };
+    }
+
     if (platform && !certificate.sharing.sharedOn.includes(platform)) {
       certificate.sharing.sharedOn.push(platform);
     }
-    certificate.sharing.shareCount += 1;
-    certificate.stats.shareCount += 1;
 
+    certificate.sharing.shareCount = (certificate.sharing.shareCount || 0) + 1;
+    certificate.stats.shareCount = (certificate.stats.shareCount || 0) + 1;
     await certificate.save();
 
+    console.log(`✅ Share tracked - Platform: ${platform}`);
+
     res.json({
-      message: 'Certificate sharing recorded successfully',
-      shareUrl: `${process.env.FRONTEND_URL}/certificates/${certificate._id}/public`
+      message: 'Share tracked',
+      shareCount: certificate.stats.shareCount
     });
   } catch (error) {
-    console.error('Share certificate error:', error);
-    res.status(500).json({ message: 'Server error sharing certificate' });
-  }
-};
-
-// Multer storage configuration for certificate images
-const certificateStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadPath = 'uploads/certificates';
-    fs.mkdirSync(uploadPath, { recursive: true });
-    cb(null, uploadPath);
-  },
-  filename: (req, file, cb) => {
-    cb(null, `certificate-${Date.now()}${path.extname(file.originalname)}`);
-  },
-});
-
-export const uploadCertificate = multer({
-  storage: certificateStorage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
-  fileFilter: (req, file, cb) => {
-    const filetypes = /jpeg|jpg|png|gif/;
-    const mimetype = filetypes.test(file.mimetype);
-    const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
-
-    if (mimetype && extname) {
-      return cb(null, true);
-    }
-    cb(new Error('Only images (jpeg, jpg, png, gif) are allowed'));
-  }
-}).single('certificateImage'); // 'certificateImage' is the name of the form field
-
-export const uploadCertificateImage = async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ message: 'No image file provided' });
-    }
-
-    const imageUrl = req.file.path; // Multer saves the path
-
-    res.status(200).json({ message: 'Image uploaded successfully', imageUrl: imageUrl });
-  } catch (error) {
-    console.error('Upload certificate image error:', error);
-    res.status(500).json({ message: error.message || 'Server error uploading certificate image' });
+    console.error('❌ Error tracking share:', error);
+    res.status(500).json({ message: 'Failed to track share' });
   }
 };

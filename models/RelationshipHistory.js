@@ -15,6 +15,7 @@ const relationshipHistorySchema = new mongoose.Schema({
       'updated',
       'breakup_requested',
       'breakup_confirmed',
+      'breakup_request_canceled',
       'ended',
       'rekindled',
       'history_access_requested',

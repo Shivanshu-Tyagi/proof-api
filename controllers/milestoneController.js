@@ -2,8 +2,7 @@ import { validationResult } from 'express-validator';
 import Milestone from '../models/Milestone.js';
 import Relationship from '../models/Relationship.js';
 import Certificate from '../models/Certificate.js';
-import Notification from '../models/Notification.js';
-import { generateCertificateImage } from './certificateController.js'; // Import the image generation function
+import { notify } from '../utils/notify.js';
 
 export const createMilestone = async (req, res) => {
   try {
@@ -27,6 +26,11 @@ export const createMilestone = async (req, res) => {
       return res.status(403).json({ message: 'Access denied' });
     }
 
+    // Either person can switch this off in the relationship's settings
+    if (relationship.settings?.permissions?.createMilestones === false) {
+      return res.status(403).json({ message: 'Adding milestones is turned off for this relationship' });
+    }
+
     if (relationship.status !== 'active') {
       return res.status(400).json({ message: 'Can only create milestones for active relationships' });
     }
@@ -48,7 +52,7 @@ export const createMilestone = async (req, res) => {
 
     // Notify the other person in the relationship
     const partnerId = relationship.getPartner(req.user.id);
-    await Notification.create({
+    await notify({
       recipient: partnerId,
       sender: req.user.id,
       type: 'milestone_created',
@@ -235,32 +239,12 @@ export const completeMilestone = async (req, res) => {
         'initiator partner', 'firstName lastName'
       );
 
-      const initiatorFullName = `${populatedRelationship.initiator.firstName} ${populatedRelationship.initiator.lastName}`;
-      const partnerFullName = `${populatedRelationship.partner.firstName} ${populatedRelationship.partner.lastName}`;
-      const recipientsForImage = [
-        { user: populatedRelationship.initiator, firstName: populatedRelationship.initiator.firstName, lastName: populatedRelationship.initiator.lastName },
-        { user: populatedRelationship.partner, firstName: populatedRelationship.partner.firstName, lastName: populatedRelationship.partner.lastName },
-      ];
-
       const certificateTitle = `${milestone.title} Achievement`;
       const certificateDescription = `Awarded for completing the milestone: ${milestone.title}`;
       const certificateType = 'milestone';
       const certificateLevel = milestone.difficulty === 'expert' ? 'platinum' :
                                milestone.difficulty === 'hard' ? 'gold' :
                                milestone.difficulty === 'medium' ? 'silver' : 'bronze';
-
-      // Generate certificate image
-      const certificateImageUrl = await generateCertificateImage({
-        title: certificateTitle,
-        description: certificateDescription,
-        recipients: recipientsForImage,
-        type: certificateType,
-        level: certificateLevel,
-        design: milestone.rewards.certificateDesign || {}, // Use existing design or empty object
-      });
-      
-      milestone.rewards.imageUrl = certificateImageUrl; // Store generated image URL in milestone
-      await milestone.save(); // Save milestone with new image URL
 
       const certificate = new Certificate({
         relatedTo: 'milestone',
@@ -273,16 +257,14 @@ export const completeMilestone = async (req, res) => {
           { user: populatedRelationship.initiator._id },
           { user: populatedRelationship.partner._id }
         ],
-        design: {
-          ...milestone.rewards.certificateDesign,
-          imageUrl: certificateImageUrl,
-        },
+        design: milestone.rewards.certificateDesign,
+        metadata: { issuedBy: 'Proof' },
       });
 
       await certificate.save();
 
       // Notify about certificate
-      await Notification.create({
+      await notify({
         recipient: milestone.relationship.initiator,
         sender: req.user.id,
         type: 'certificate_earned',
@@ -295,7 +277,7 @@ export const completeMilestone = async (req, res) => {
         }
       });
 
-      await Notification.create({
+      await notify({
         recipient: milestone.relationship.partner,
         sender: req.user.id,
         type: 'certificate_earned',
@@ -314,7 +296,7 @@ export const completeMilestone = async (req, res) => {
       ? milestone.relationship.partner 
       : milestone.relationship.initiator;
 
-    await Notification.create({
+    await notify({
       recipient: partnerId,
       sender: req.user.id,
       type: 'milestone_achieved',

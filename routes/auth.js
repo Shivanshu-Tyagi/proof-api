@@ -1,7 +1,8 @@
 import express from 'express';
-import { body, query } from 'express-validator';
-import { signup, login, getMe, updateProfile, searchUsers, uploadProfileImage, upload } from '../controllers/authController.js';
+import { body, param, query } from 'express-validator';
+import { signup, login, getMe, updateProfile, searchUsers, searchUserByRegistrationId, searchUsersByEmail, changePassword, forgotPassword, resetPassword, uploadProfileImage, upload } from '../controllers/authController.js';
 import { authenticate } from '../middleware/auth.js';
+import { exportAccountData, deleteAccount } from '../controllers/accountController.js';
 
 const router = express.Router();
 
@@ -18,8 +19,8 @@ const signupValidation = [
     .normalizeEmail()
     .withMessage('Please provide a valid email'),
   body('password')
-    .isLength({ min: 6 })
-    .withMessage('Password must be at least 6 characters long'),
+    .isLength({ min: 8, max: 128 })
+    .withMessage('Password must be between 8 and 128 characters'),
   body('firstName')
     .trim()
     .isLength({ min: 1, max: 50 })
@@ -61,13 +62,30 @@ const updateProfileValidation = [
     .withMessage('Please provide a valid date')
 ];
 
+const passwordRule = body('password')
+  .isLength({ min: 8, max: 128 })
+  .withMessage('Password must be between 8 and 128 characters');
+
+const changePasswordValidation = [
+  body('currentPassword').notEmpty().withMessage('Current password is required'),
+  body('newPassword').isLength({ min: 8, max: 128 }).withMessage('Password must be between 8 and 128 characters')
+];
+
 // Routes
-router.post('/signup', signup);
+router.post('/signup', signupValidation, signup);
 router.post('/login', loginValidation, login);
+router.post('/forgot-password', [body('email').isEmail().normalizeEmail().withMessage('Please provide a valid email')], forgotPassword);
+router.post('/reset-password/:token', [param('token').isHexadecimal().isLength({ min: 64, max: 64 }), passwordRule], resetPassword);
+router.post('/change-password', authenticate, changePasswordValidation, changePassword);
 router.get('/me', authenticate, getMe);
+router.get('/export', authenticate, exportAccountData);
+router.post('/delete-account', authenticate, [body('password').notEmpty().withMessage('Password is required')], deleteAccount);
 router.put('/profile', authenticate, updateProfileValidation, updateProfile);
 router.post('/upload-profile-image', authenticate, upload, uploadProfileImage); // New route for profile image upload
-router.get('/search', authenticate, [
+router.get('/search/email', authenticate, searchUsersByEmail);
+router.get('/search', authenticate, (req, res, next) => (
+  req.query.registrationId ? searchUserByRegistrationId(req, res) : next()
+), [
   query('q').isString().trim().notEmpty().withMessage('Search query cannot be empty.')
 ], searchUsers);
 

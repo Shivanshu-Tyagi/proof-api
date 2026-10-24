@@ -1,7 +1,7 @@
 import { validationResult } from 'express-validator';
 import Term from '../models/Term.js';
 import Relationship from '../models/Relationship.js';
-import Notification from '../models/Notification.js';
+import { notify } from '../utils/notify.js';
 
 export const createTerm = async (req, res) => {
   try {
@@ -23,6 +23,11 @@ export const createTerm = async (req, res) => {
 
     if (!relationship.includesUser(req.user.id)) {
       return res.status(403).json({ message: 'Access denied' });
+    }
+
+    // Either person can switch this off in the relationship's settings
+    if (relationship.settings?.permissions?.createTerms === false) {
+      return res.status(403).json({ message: 'Adding agreements is turned off for this relationship' });
     }
 
     if (relationship.status !== 'active') {
@@ -47,7 +52,7 @@ export const createTerm = async (req, res) => {
 
     // Notify the other person in the relationship
     const partnerId = relationship.getPartner(req.user.id);
-    await Notification.create({
+    await notify({
       recipient: partnerId,
       sender: req.user.id,
       type: 'term_proposed',
@@ -109,6 +114,30 @@ export const getTerms = async (req, res) => {
     res.json({ terms });
   } catch (error) {
     console.error('Get terms error:', error);
+    res.status(500).json({ message: 'Server error fetching terms' });
+  }
+};
+
+export const getAllTerms = async (req, res) => {
+  try {
+    const { status, category } = req.query;
+    const relationships = await Relationship.find({
+      $or: [{ initiator: req.user.id }, { partner: req.user.id }]
+    }).select('_id');
+
+    const filter = { relationship: { $in: relationships.map(r => r._id) } };
+    if (status) filter.status = status;
+    if (category) filter.category = category;
+
+    const terms = await Term.find(filter)
+      .populate('relationship', 'title type initiator partner')
+      .populate('createdBy', 'username firstName lastName avatar')
+      .populate('agreedBy.user', 'username firstName lastName avatar')
+      .sort({ createdAt: -1 });
+
+    res.json({ terms });
+  } catch (error) {
+    console.error('Get all terms error:', error);
     res.status(500).json({ message: 'Server error fetching terms' });
   }
 };
@@ -255,7 +284,7 @@ export const agreeTerm = async (req, res) => {
       ? term.relationship.partner 
       : term.relationship.initiator;
 
-    await Notification.create({
+    await notify({
       recipient: partnerId,
       sender: req.user.id,
       type: 'term_agreed',
@@ -315,7 +344,7 @@ export const reportViolation = async (req, res) => {
       ? term.relationship.partner 
       : term.relationship.initiator;
 
-    await Notification.create({
+    await notify({
       recipient: partnerId,
       sender: req.user.id,
       type: 'term_violated',

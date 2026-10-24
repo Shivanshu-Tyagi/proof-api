@@ -16,8 +16,12 @@ import {
   // grantHistoryAccess,
   requestBreakup,
   confirmBreakup,
-  // getUserHistory,
-  cancelBreakupRequest
+  cancelBreakupRequest,
+  getUserHistory,
+  requestHistoryAccess,
+  grantHistoryAccess,
+  getPrivateNote,
+  savePrivateNote
 } from '../controllers/relationshipController.js';
 import { authenticate } from '../middleware/auth.js';
 
@@ -28,7 +32,9 @@ router.use(authenticate);
 
 // Validation rules
 const createRelationshipValidation = [
+  body('partnerId').optional().isMongoId().withMessage('Invalid partner ID'),
   body('partnerEmail')
+    .if(body('partnerId').not().exists())
     .isEmail()
     .normalizeEmail()
     .withMessage('Please provide a valid partner email'),
@@ -76,6 +82,7 @@ const typeChangeValidation = [
 // Routes
 router.post('/', createRelationshipValidation, createRelationship);
 router.get('/', getRelationships);
+router.get('/history/:userId', param('userId').isMongoId(), getUserHistory);
 router.get('/:id', param('id').isMongoId(), getRelationship);
 router.put('/:id', updateRelationshipValidation, updateRelationship);
 router.delete('/:id', param('id').isMongoId(), deleteRelationship);
@@ -88,8 +95,14 @@ router.post('/:id/request-type-change', typeChangeValidation, requestTypeChange)
 router.post('/:id/accept-type-change', param('id').isMongoId(), acceptTypeChange);
 router.post('/:id/decline-type-change', param('id').isMongoId(), declineTypeChange);
 router.post('/:id/cancel-type-change', param('id').isMongoId(), cancelTypeChangeRequest);
-// router.get('/history/:userId', param('userId').isMongoId(), getUserHistory);
-// router.post('/:id/request-history-access', param('id').isMongoId(), requestHistoryAccess);
-// router.post('/:id/grant-history-access', param('id').isMongoId(), grantHistoryAccess);
+router.post('/:id/request-history-access', param('id').isMongoId(), requestHistoryAccess);
+router.post(
+  '/:id/grant-history-access',
+  param('id').isMongoId(),
+  body('durationDays').optional({ nullable: true }).isIn([7, 30]).withMessage('durationDays must be 7, 30 or empty'),
+  grantHistoryAccess
+);
+router.get('/:id/note', param('id').isMongoId(), getPrivateNote);
+router.put('/:id/note', param('id').isMongoId(), body('text').optional().isString().isLength({ max: 1000 }), savePrivateNote);
 
 export default router;

@@ -3,6 +3,7 @@ import { body, param } from 'express-validator';
 import {
   createTerm,
   getTerms,
+  getAllTerms,
   getTerm,
   updateTerm,
   deleteTerm,
@@ -23,6 +24,7 @@ const createTermValidation = [
 ];
 
 router.post('/', createTermValidation, createTerm);
+router.get('/', getAllTerms);
 router.get('/relationship/:relationshipId', param('relationshipId').isMongoId(), getTerms);
 router.get('/:id', param('id').isMongoId(), getTerm);
 router.put('/:id', param('id').isMongoId(), updateTerm);

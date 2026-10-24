@@ -1,8 +1,22 @@
 import { validationResult } from 'express-validator';
 import Relationship from '../models/Relationship.js';
 import User from '../models/User.js';
-import Notification from '../models/Notification.js';
-// import RelationshipHistory from '../models/RelationshipHistory.js';
+import { notify } from '../utils/notify.js';
+import RelationshipHistory from '../models/RelationshipHistory.js';
+import PrivateNote from '../models/PrivateNote.js';
+
+// A grant counts only until its expiry date, if it has one
+const isGrantActive = (access) =>
+  !!access?.granted && (!access.expiresAt || new Date(access.expiresAt) > new Date());
+
+// History logging must never fail the request that triggered it
+const logHistory = async (entry) => {
+  try {
+    await RelationshipHistory.create(entry);
+  } catch (error) {
+    console.error('Error creating relationship history entry:', error);
+  }
+};
 
 export const createRelationship = async (req, res) => {
   try {
@@ -14,12 +28,14 @@ export const createRelationship = async (req, res) => {
       });
     }
 
-    const { partnerEmail, title, type = 'acquaintance', description = '' } = req.body;
+    const { partnerEmail, partnerId, title, type = 'acquaintance', description = '' } = req.body;
 
-    // Find partner by email
-    const partner = await User.findOne({ email: partnerEmail });
+    // The person can be named by ID (from a search) or by email
+    const partner = partnerId
+      ? await User.findOne({ _id: partnerId, isActive: true })
+      : await User.findOne({ email: partnerEmail });
     if (!partner) {
-      return res.status(404).json({ message: 'User not found with this email' });
+      return res.status(404).json({ message: partnerId ? 'User not found' : 'User not found with this email' });
     }
 
     // Check if user is trying to create relationship with themselves
@@ -100,16 +116,16 @@ export const createRelationship = async (req, res) => {
     ]);
 
     // Log relationship creation
-    // await RelationshipHistory.create({
-    //   relationshipId: relationship._id,
-    //   eventType: 'created',
-    //   actor: req.user.id,
-    //   targetUser: partner._id,
-    //   details: { title: relationship.title, type: relationship.type }
-    // });
+    await logHistory({
+      relationshipId: relationship._id,
+      eventType: 'created',
+      actor: req.user.id,
+      targetUser: partner._id,
+      details: { title: relationship.title, type: relationship.type }
+    });
 
     // Create notification for partner
-    await Notification.create({
+    await notify({
       recipient: partner._id,
       sender: req.user.id,
       type: 'relationship_invite',
@@ -159,14 +175,14 @@ export const getRelationships = async (req, res) => {
       .populate({
         path: 'latestCertificate'
       }) // Populate the latestCertificate
-      // .populate({
-      //   path: 'historyAccess.requestedBy',
-      //   select: 'username firstName lastName avatar'
-      // })
-      // .populate({
-      //   path: 'historyAccess.grantedBy',
-      //   select: 'username firstName lastName avatar'
-      // })
+      .populate({
+        path: 'historyAccess.requestedBy',
+        select: 'username firstName lastName avatar'
+      })
+      .populate({
+        path: 'historyAccess.grantedBy',
+        select: 'username firstName lastName avatar'
+      })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
@@ -203,14 +219,14 @@ export const getRelationship = async (req, res) => {
       .populate({
         path: 'latestCertificate'
       }) // Populate the latestCertificate
-      // .populate({
-      //   path: 'historyAccess.requestedBy',
-      //   select: 'username firstName lastName avatar'
-      // })
-      // .populate({
-      //   path: 'historyAccess.grantedBy',
-      //   select: 'username firstName lastName avatar'
-      // });
+      .populate({
+        path: 'historyAccess.requestedBy',
+        select: 'username firstName lastName avatar'
+      })
+      .populate({
+        path: 'historyAccess.grantedBy',
+        select: 'username firstName lastName avatar'
+      });
 
     if (!relationship) {
       return res.status(404).json({ message: 'Relationship not found' });
@@ -264,6 +280,16 @@ export const updateRelationship = async (req, res) => {
       }
     });
 
+    // The only settings that do anything: who may add shared items. Everything else is ignored.
+    const requested = req.body.settings?.permissions;
+    if (requested && typeof requested === 'object') {
+      ['createActivities', 'createMilestones', 'createTerms'].forEach((key) => {
+        if (typeof requested[key] === 'boolean') {
+          updates[`settings.permissions.${key}`] = requested[key];
+        }
+      });
+    }
+
     const updatedRelationship = await Relationship.findByIdAndUpdate(
       req.params.id,
       updates,
@@ -274,13 +300,13 @@ export const updateRelationship = async (req, res) => {
     ]);
 
     // Log relationship update
-    // await RelationshipHistory.create({
-    //   relationshipId: updatedRelationship._id,
-    //   eventType: 'updated',
-    //   actor: req.user.id,
-    //   targetUser: updatedRelationship.getPartner(req.user.id),
-    //   details: { updates: updates }
-    // });
+    await logHistory({
+      relationshipId: updatedRelationship._id,
+      eventType: 'updated',
+      actor: req.user.id,
+      targetUser: updatedRelationship.getPartner(req.user.id),
+      details: { updated: Object.keys(updates) }
+    });
 
     res.json({
       message: 'Relationship updated successfully',
@@ -342,7 +368,7 @@ export const requestTypeChange = async (req, res) => {
 
     const partnerId = relationship.getPartner(userId);
     // Fire-and-forget notification
-    Notification.create({
+    notify({
       recipient: partnerId,
       sender: userId,
       type: 'relationship_type_change_request',
@@ -391,7 +417,7 @@ export const acceptTypeChange = async (req, res) => {
     await relationship.save();
 
     // Notify requester
-    Notification.create({
+    notify({
       recipient: reqState.requestedBy,
       sender: userId,
       type: 'relationship_type_change_accepted',
@@ -433,7 +459,7 @@ export const declineTypeChange = async (req, res) => {
     await relationship.save();
 
     // Notify requester
-    Notification.create({
+    notify({
       recipient: reqState.requestedBy,
       sender: userId,
       type: 'relationship_type_change_declined',
@@ -474,7 +500,7 @@ export const cancelTypeChangeRequest = async (req, res) => {
 
     const partnerId = relationship.getPartner(userId);
     if (partnerId) {
-      Notification.create({
+      notify({
         recipient: partnerId,
         sender: userId,
         type: 'relationship_type_change_canceled',
@@ -524,13 +550,13 @@ export const acceptRelationship = async (req, res) => {
     await relationship.save();
 
     // Log relationship acceptance
-    // await RelationshipHistory.create({
-    //   relationshipId: relationship._id,
-    //   eventType: 'accepted',
-    //   actor: req.user.id,
-    //   targetUser: relationship.initiator._id,
-    //   details: { title: relationship.title, type: relationship.type }
-    // });
+    await logHistory({
+      relationshipId: relationship._id,
+      eventType: 'accepted',
+      actor: req.user.id,
+      targetUser: relationship.initiator._id,
+      details: { title: relationship.title, type: relationship.type }
+    });
 
     // Populate the relationship data
     await relationship.populate([
@@ -539,7 +565,7 @@ export const acceptRelationship = async (req, res) => {
     ]);
 
     // Create notification for initiator
-    await Notification.create({
+    await notify({
       recipient: relationship.initiator._id,
       sender: req.user.id,
       type: 'relationship_accepted',
@@ -593,16 +619,16 @@ export const declineRelationship = async (req, res) => {
     await relationship.save();
 
     // Log relationship decline
-    // await RelationshipHistory.create({
-    //   relationshipId: relationship._id,
-    //   eventType: 'declined',
-    //   actor: req.user.id,
-    //   targetUser: relationship.initiator._id,
-    //   details: { title: relationship.title, type: relationship.type }
-    // });
+    await logHistory({
+      relationshipId: relationship._id,
+      eventType: 'declined',
+      actor: req.user.id,
+      targetUser: relationship.initiator._id,
+      details: { title: relationship.title, type: relationship.type }
+    });
 
     // Create notification for initiator
-    await Notification.create({
+    await notify({
       recipient: relationship.initiator._id,
       sender: req.user.id,
       type: 'relationship_declined',
@@ -704,7 +730,7 @@ export const requestBreakup = async (req, res) => {
 
     const partnerId = relationship.getPartner(req.user.id);
     // No need to await these, let them run in background. If they fail, log it but don't block response.
-    Notification.create({
+    notify({
       recipient: partnerId,
       sender: req.user.id,
       type: 'breakup_request',
@@ -721,13 +747,13 @@ export const requestBreakup = async (req, res) => {
       }
     }).catch(notificationError => console.error('Error creating breakup request notification:', notificationError));
 
-    // RelationshipHistory.create({
-    //   relationshipId: relationship._id,
-    //   eventType: 'breakup_requested',
-    //   actor: req.user.id,
-    //   targetUser: partnerId,
-    //   details: { requestedBy: req.user.id }
-    // }).catch(historyError => console.error('Error creating breakup request history:', historyError));
+    await logHistory({
+      relationshipId: relationship._id,
+      eventType: 'breakup_requested',
+      actor: req.user.id,
+      targetUser: partnerId,
+      details: { requestedBy: req.user.id }
+    });
     
   } catch (error) {
     console.error('Request breakup error:', error);
@@ -775,7 +801,7 @@ export const confirmBreakup = async (req, res) => {
 
     const initiatorId = relationship.breakupRequestedBy;
     // No need to await these, let them run in background. If they fail, log it but don't block response.
-    Notification.create({
+    notify({
       recipient: initiatorId,
       sender: req.user.id,
       type: 'breakup_confirmed',
@@ -787,13 +813,13 @@ export const confirmBreakup = async (req, res) => {
       }
     }).catch(notificationError => console.error('Error creating breakup confirmed notification:', notificationError));
 
-    // RelationshipHistory.create({
-    //   relationshipId: relationship._id,
-    //   eventType: 'breakup_confirmed',
-    //   actor: req.user.id,
-    //   targetUser: initiatorId,
-    //   details: { confirmedBy: req.user.id }
-    // }).catch(historyError => console.error('Error creating breakup confirmed history:', historyError));
+    await logHistory({
+      relationshipId: relationship._id,
+      eventType: 'breakup_confirmed',
+      actor: req.user.id,
+      targetUser: initiatorId,
+      details: { confirmedBy: req.user.id }
+    });
   
   } catch (error) {
     console.error('Confirm breakup error:', error);
@@ -842,17 +868,17 @@ export const cancelBreakupRequest = async (req, res) => {
     await relationship.save();
 
     // Log relationship history
-    // await RelationshipHistory.create({
-    //   relationshipId: relationship._id,
-    //   eventType: 'breakup_request_canceled',
-    //   initiatedBy: userId,
-    //   details: { message: 'Breakup request canceled by initiator' }
-    // });
+    await logHistory({
+      relationshipId: relationship._id,
+      eventType: 'breakup_request_canceled',
+      actor: userId,
+      details: { message: 'Breakup request canceled by initiator' }
+    });
 
     // Notify the other partner
     const partnerId = relationship.getPartner(userId);
     if (partnerId) {
-      await Notification.create({
+      await notify({
         recipient: partnerId,
         sender: userId,
         type: 'breakup_request_canceled',
@@ -876,188 +902,273 @@ export const cancelBreakupRequest = async (req, res) => {
   }
 };
 
-// export const getUserHistory = async (req, res) => {
-//   try {
-//     const { userId } = req.params;
-//     const requestingUser = req.user.id;
+// A user's history is visible to themselves, or to someone they granted access
+// to through a relationship the viewer requested it in.
+export const getUserHistory = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
+    }
 
-//     const targetUser = await User.findById(userId);
-//     if (!targetUser) {
-//       return res.status(404).json({ message: 'User not found' });
-//     }
+    const { userId } = req.params;
+    const requestingUser = req.user.id;
 
-//     let canAccessHistory = false;
-//     if (targetUser.historyPrivacy === 'public') {
-//       canAccessHistory = true;
-//     } else if (targetUser.historyPrivacy === 'granted_only') {
-//       // Check if the requesting user has been explicitly granted access
-//       // This will require a new field on User model or a separate collection for grants
-//       // For now, we will assume this is handled on a relationship-by-relationship basis
-//       // We'll refine this when we implement the user-specific history access grant/revoke
+    const targetUser = await User.findById(userId).select('username firstName lastName avatar');
+    if (!targetUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
 
-//       // For the scope of relationship history, if they are/were in a relationship and access was granted for that specific relationship.
-//       const existingRelationship = await Relationship.findOne({
-//         $or: [
-//           { initiator: requestingUser, partner: targetUser._id },
-//           { initiator: targetUser._id, partner: requestingUser }
-//         ],
-//         'historyAccess.granted': true
-//       });
-//       if (existingRelationship) {
-//         canAccessHistory = true;
-//       }
-//     }
+    const isSelf = requestingUser.toString() === userId;
+    let canAccessHistory = isSelf;
+    let grant = null;
+    if (!canAccessHistory) {
+      grant = await Relationship.findOne({
+        $and: [
+          {
+            $or: [
+              { initiator: requestingUser, partner: userId },
+              { initiator: userId, partner: requestingUser }
+            ]
+          },
+          {
+            $or: [
+              { 'historyAccess.expiresAt': { $exists: false } },
+              { 'historyAccess.expiresAt': null },
+              { 'historyAccess.expiresAt': { $gt: new Date() } }
+            ]
+          }
+        ],
+        'historyAccess.granted': true,
+        'historyAccess.requestedBy': requestingUser,
+        'historyAccess.grantedBy': userId
+      });
+      canAccessHistory = !!grant;
+    }
 
-//     if (!canAccessHistory) {
-//       return res.status(403).json({ message: 'Access to this user\'s history is denied' });
-//     }
+    if (!canAccessHistory) {
+      return res.status(403).json({ message: "Access to this user's history is denied" });
+    }
 
-//     const history = await RelationshipHistory.find({
-//       $or: [
-//         { actor: targetUser._id },
-//         { targetUser: targetUser._id }
-//       ]
-//     })
-//     .populate('relationshipId', 'title type')
-//     .populate('actor', 'username firstName lastName avatar')
-//     .populate('targetUser', 'username firstName lastName avatar')
-//     .sort({ eventDate: -1 });
+    const history = await RelationshipHistory.find({
+      $or: [{ actor: userId }, { targetUser: userId }],
+      eventType: { $not: /^history_access/ }
+    })
+      .populate('relationshipId', 'title type')
+      .populate('actor', 'firstName lastName')
+      .populate('targetUser', 'firstName lastName')
+      .sort({ eventDate: -1 })
+      .limit(200);
 
-//     res.json({ history });
+    // Share what the grant promises: titles, types and dates. People other than the two of
+    // you appear only as "Someone", and free-form event details are left out.
+    const known = new Set([userId.toString(), requestingUser.toString()]);
+    const nameOf = (person) => {
+      if (!person) return null;
+      return known.has(person._id.toString()) ? `${person.firstName} ${person.lastName}` : 'Someone';
+    };
+    const shaped = history.map((event) => ({
+      _id: event._id,
+      eventType: event.eventType,
+      eventDate: event.eventDate,
+      relationship: event.relationshipId ? { title: event.relationshipId.title, type: event.relationshipId.type } : null,
+      actor: nameOf(event.actor),
+      targetUser: nameOf(event.targetUser)
+    }));
 
-//   } catch (error) {
-//     console.error('Get user history error:', error);
-//     res.status(500).json({ message: 'Server error fetching user history' });
-//   }
-// };
+    res.json({
+      user: targetUser,
+      history: shaped,
+      access: isSelf ? { self: true } : { self: false, expiresAt: grant?.historyAccess?.expiresAt ?? null }
+    });
+  } catch (error) {
+    console.error('Get user history error:', error);
+    res.status(500).json({ message: 'Server error fetching user history' });
+  }
+};
 
-// export const requestHistoryAccess = async (req, res) => {
-//   try {
-//     const errors = validationResult(req);
-//     if (!errors.isEmpty()) {
-//       return res.status(400).json({
-//         message: 'Validation failed',
-//         errors: errors.array()
-//       });
-//     }
+export const requestHistoryAccess = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
+    }
 
-//     const relationship = await Relationship.findById(req.params.id);
+    const relationship = await Relationship.findById(req.params.id);
+    if (!relationship) {
+      return res.status(404).json({ message: 'Relationship not found' });
+    }
+    if (!relationship.includesUser(req.user.id)) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
 
-//     if (!relationship) {
-//       return res.status(404).json({ message: 'Relationship not found' });
-//     }
+    const access = relationship.historyAccess;
+    if (isGrantActive(access) && access.requestedBy?.toString() === req.user.id.toString()) {
+      return res.status(400).json({ message: 'You already have access to this history' });
+    }
+    // Pending means nobody has answered yet; a declined request can be asked again
+    const pending = access.requested && !access.granted && !access.grantedAt;
+    if (pending && access.requestedBy?.toString() === req.user.id.toString()) {
+      return res.status(400).json({ message: 'History access request already sent' });
+    }
 
-//     // Check if user is part of this relationship
-//     if (!relationship.includesUser(req.user.id)) {
-//       return res.status(403).json({ message: 'Access denied' });
-//     }
+    // A new request replaces any earlier grant or denial
+    relationship.historyAccess = {
+      requested: true,
+      requestedBy: req.user.id,
+      requestedAt: new Date(),
+      granted: false
+    };
+    await relationship.save();
 
-//     // Update history access request
-//     relationship.historyAccess.requested = true;
-//     relationship.historyAccess.requestedBy = req.user.id;
-//     relationship.historyAccess.requestedAt = new Date();
-//     await relationship.save();
+    const partnerId = relationship.getPartner(req.user.id);
+    await notify({
+      recipient: partnerId,
+      sender: req.user.id,
+      type: 'history_access_request',
+      title: 'History Access Request',
+      message: `${req.user.firstName} ${req.user.lastName} wants to view your relationship history`,
+      category: 'relationship',
+      actionRequired: true,
+      actions: [
+        { type: 'accept', label: 'Review Request', url: `/relationships/${relationship._id}` },
+        { type: 'decline', label: 'Dismiss', url: '/notifications' }
+      ],
+      metadata: { relationshipId: relationship._id }
+    });
 
-//     // Notify the other person
-//     const partnerId = relationship.getPartner(req.user.id);
-//     await Notification.create({
-//       recipient: partnerId,
-//       sender: req.user.id,
-//       type: 'history_access_request',
-//       title: 'History Access Request',
-//       message: `${req.user.firstName} ${req.user.lastName} wants to view your relationship history`,
-//       category: 'relationship',
-//       actionRequired: true,
-//       actions: [
-//         { type: 'accept', label: 'Review Request', url: `/relationships/${relationship._id}` },
-//         { type: 'decline', label: 'Dismiss', url: `/notifications` } // Changed to /notifications as a placeholder or dismiss action
-//       ],
-//       metadata: {
-//         relationshipId: relationship._id
-//       }
-//     });
+    await logHistory({
+      relationshipId: relationship._id,
+      eventType: 'history_access_requested',
+      actor: req.user.id,
+      targetUser: partnerId,
+      details: { requestedForRelationship: relationship._id }
+    });
 
-//     await RelationshipHistory.create({
-//       relationshipId: relationship._id,
-//       eventType: 'history_access_requested',
-//       actor: req.user.id,
-//       targetUser: partnerId,
-//       details: { requestedForRelationship: relationship._id }
-//     });
+    res.json({ message: 'History access request sent successfully' });
+  } catch (error) {
+    console.error('Request history access error:', error);
+    res.status(500).json({ message: 'Server error during history access request' });
+  }
+};
 
-//     res.json({
-//       message: 'History access request sent successfully'
-//     });
-//   } catch (error) {
-//     console.error('Request history access error:', error);
-//     res.status(500).json({ message: 'Server error during history access request' });
-//   }
-// };
+export const grantHistoryAccess = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
+    }
 
-// export const grantHistoryAccess = async (req, res) => {
-//   try {
-//     const errors = validationResult(req);
-//     if (!errors.isEmpty()) {
-//       return res.status(400).json({
-//         message: 'Validation failed',
-//         errors: errors.array()
-//       });
-//     }
+    const { granted = true, durationDays } = req.body;
+    const relationship = await Relationship.findById(req.params.id);
+    if (!relationship) {
+      return res.status(404).json({ message: 'Relationship not found' });
+    }
+    if (!relationship.includesUser(req.user.id)) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
 
-//     const { granted = true } = req.body;
-//     const relationship = await Relationship.findById(req.params.id);
+    const requesterId = relationship.historyAccess?.requestedBy;
+    if (!relationship.historyAccess?.requested || !requesterId) {
+      return res.status(400).json({ message: 'No history access request pending' });
+    }
+    // Only the person being asked can answer
+    if (requesterId.toString() === req.user.id.toString()) {
+      return res.status(403).json({ message: 'You cannot respond to your own request' });
+    }
 
-//     if (!relationship) {
-//       return res.status(404).json({ message: 'Relationship not found' });
-//     }
+    relationship.historyAccess.granted = !!granted;
+    relationship.historyAccess.grantedBy = req.user.id;
+    relationship.historyAccess.grantedAt = new Date();
+    relationship.historyAccess.expiresAt = granted && durationDays
+      ? new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000)
+      : undefined;
+    await relationship.save();
 
-//     // Check if user is part of this relationship
-//     if (!relationship.includesUser(req.user.id)) {
-//       return res.status(403).json({ message: 'Access denied' });
-//     }
+    await logHistory({
+      relationshipId: relationship._id,
+      eventType: granted ? 'history_access_granted' : 'history_access_denied',
+      actor: req.user.id,
+      targetUser: requesterId,
+      details: { grantedAccess: !!granted, relationshipId: relationship._id }
+    });
 
-//     // Update history access grant
-//     relationship.historyAccess.requested = true;
-//     relationship.historyAccess.granted = granted;
-//     relationship.historyAccess.grantedBy = req.user.id;
-//     relationship.historyAccess.grantedAt = new Date();
-//     await relationship.save();
+    await notify({
+      recipient: requesterId,
+      sender: req.user.id,
+      type: granted ? 'history_access_granted' : 'history_access_denied',
+      title: granted ? 'History Access Granted' : 'History Access Denied',
+      message: granted
+        ? `${req.user.firstName} ${req.user.lastName} granted you access to view relationship history${durationDays ? ` for ${durationDays} days` : ''}`
+        : `${req.user.firstName} ${req.user.lastName} denied your request to view relationship history`,
+      category: 'relationship',
+      actions: [
+        { type: 'view', label: 'View Relationship', url: `/relationships/${relationship._id}` }
+      ],
+      metadata: { relationshipId: relationship._id }
+    });
 
-//     // Log history access granted/denied event
-//     await RelationshipHistory.create({
-//       relationshipId: relationship._id,
-//       eventType: granted ? 'history_access_granted' : 'history_access_denied',
-//       actor: req.user.id,
-//       targetUser: relationship.historyAccess.requestedBy,
-//       details: { grantedAccess: granted, relationshipId: relationship._id }
-//     });
+    res.json({
+      message: granted ? 'History access granted successfully' : 'History access denied'
+    });
+  } catch (error) {
+    console.error('Grant history access error:', error);
+    res.status(500).json({ message: 'Server error during history access grant' });
+  }
+};
 
-//     // Notify the requester
-//     const requesterId = relationship.historyAccess.requestedBy;
-//     if (requesterId) {
-//       await Notification.create({
-//         recipient: requesterId,
-//         sender: req.user.id,
-//         type: granted ? 'history_access_granted' : 'history_access_denied',
-//         title: granted ? 'History Access Granted' : 'History Access Denied',
-//         message: granted 
-//           ? `${req.user.firstName} ${req.user.lastName} granted you access to view relationship history`
-//           : `${req.user.firstName} ${req.user.lastName} denied your request to view relationship history`,
-//         category: 'relationship',
-//         actions: [
-//           { type: 'view', label: 'View Relationship', url: `/relationships/${relationship._id}` }
-//         ],
-//         metadata: {
-//           relationshipId: relationship._id
-//         }
-//       });
-//     }
+// Private notes: each person only ever sees their own
+const memberOr403 = async (req, res) => {
+  const relationship = await Relationship.findById(req.params.id);
+  if (!relationship) {
+    res.status(404).json({ message: 'Relationship not found' });
+    return null;
+  }
+  if (!relationship.includesUser(req.user.id)) {
+    res.status(403).json({ message: 'Access denied' });
+    return null;
+  }
+  return relationship;
+};
 
-//     res.json({
-//       message: granted ? 'History access granted successfully' : 'History access denied'
-//     });
-//   } catch (error) {
-//     console.error('Grant history access error:', error);
-//     res.status(500).json({ message: 'Server error during history access grant' });
-//   }
-// };
+export const getPrivateNote = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
+    }
+    const relationship = await memberOr403(req, res);
+    if (!relationship) return;
+    const note = await PrivateNote.findOne({ relationship: relationship._id, user: req.user.id });
+    res.json({ note: note ? { text: note.text, updatedAt: note.updatedAt } : null });
+  } catch (error) {
+    console.error('Get private note error:', error);
+    res.status(500).json({ message: 'Server error fetching note' });
+  }
+};
+
+export const savePrivateNote = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
+    }
+    const relationship = await memberOr403(req, res);
+    if (!relationship) return;
+
+    const text = (req.body.text ?? '').trim();
+    if (!text) {
+      await PrivateNote.deleteOne({ relationship: relationship._id, user: req.user.id });
+      return res.json({ note: null });
+    }
+    const note = await PrivateNote.findOneAndUpdate(
+      { relationship: relationship._id, user: req.user.id },
+      { text },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    res.json({ note: { text: note.text, updatedAt: note.updatedAt } });
+  } catch (error) {
+    console.error('Save private note error:', error);
+    res.status(500).json({ message: 'Server error saving note' });
+  }
+};
