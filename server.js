@@ -22,6 +22,7 @@ import Relationship from './models/Relationship.js';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler.js';
+import { createApiLimiter, createAuthIpLimiter, createLoginAccountLimiter } from './middleware/rateLimits.js';
 
 validateConfig();
 
@@ -41,13 +42,9 @@ app.use(cors({
 }));
 
 // Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: Number(process.env.AUTH_RATE_LIMIT_MAX) || 100, // per IP per window; tests raise it
-  message: 'Too many requests from this IP, please try again later.'
-});
-app.use('/api/auth/login', limiter);
-app.use('/api/auth/signup', limiter);
+const authIpLimiter = createAuthIpLimiter();
+app.use('/api/auth/login', authIpLimiter);
+app.use('/api/auth/signup', authIpLimiter);
 // Export and deletion are heavy and sensitive, so keep them to a few attempts
 app.use(['/api/auth/export', '/api/auth/delete-account'], rateLimit({
   windowMs: 60 * 60 * 1000,
@@ -59,8 +56,8 @@ app.use('/api/auth/forgot-password', rateLimit({
   max: 5,
   message: { message: 'Too many reset requests, please try again later.' }
 }));
-// Generous ceiling for everything else
-app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: Number(process.env.API_RATE_LIMIT_MAX) || 1000 }));
+// Everything else: counted per signed-in person, or per address for anonymous visitors
+app.use('/api', createApiLimiter());
 
 // Logging
 if (process.env.NODE_ENV !== 'test') {
@@ -70,6 +67,8 @@ if (process.env.NODE_ENV !== 'test') {
 // Body parsing middleware
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+// Needs the parsed body, because the key is the account's email
+app.use('/api/auth/login', createLoginAccountLimiter());
 // Express 5 leaves req.body undefined when a request has no body (for example the Agree button),
 // and handlers that read fields from it would crash with a 500
 app.use((req, res, next) => {

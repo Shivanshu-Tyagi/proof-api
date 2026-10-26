@@ -29,6 +29,7 @@
   "license": "ISC",
   "description": "",
   "devDependencies": {
+    "autocannon": "^8.0.0",
     "chai": "^6.0.1",
     "jest": "^30.0.0",
     "mocha": "^11.7.2",
