@@ -323,6 +323,20 @@ export const searchUsers = async (req, res) => {
 };
 
 // Find a single user by registration ID
+// Public: the page behind someone's invite link only needs to say who sent it, so give back a first name and nothing else
+export const getConnectInfo = async (req, res) => {
+  try {
+    const id = String(req.params.registrationId || '');
+    if (!/^[A-Za-z0-9_-]{8,12}$/.test(id)) return res.status(404).json({ message: 'This invite link is not valid' });
+    const user = await User.findOne({ registrationId: id, isActive: { $ne: false } }).select('firstName');
+    if (!user) return res.status(404).json({ message: 'This invite link is not valid' });
+    res.json({ firstName: user.firstName });
+  } catch (error) {
+    console.error('Connect info error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 export const searchUserByRegistrationId = async (req, res) => {
   try {
     const { registrationId } = req.query;

@@ -43,7 +43,7 @@ app.use(cors({
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  max: Number(process.env.AUTH_RATE_LIMIT_MAX) || 100, // per IP per window; tests raise it
   message: 'Too many requests from this IP, please try again later.'
 });
 app.use('/api/auth/login', limiter);
@@ -60,7 +60,7 @@ app.use('/api/auth/forgot-password', rateLimit({
   message: { message: 'Too many reset requests, please try again later.' }
 }));
 // Generous ceiling for everything else
-app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: 1000 }));
+app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: Number(process.env.API_RATE_LIMIT_MAX) || 1000 }));
 
 // Logging
 if (process.env.NODE_ENV !== 'test') {

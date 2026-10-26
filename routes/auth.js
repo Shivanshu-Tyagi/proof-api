@@ -1,6 +1,7 @@
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import { body, param, query } from 'express-validator';
-import { signup, login, getMe, updateProfile, searchUsers, searchUserByRegistrationId, searchUsersByEmail, changePassword, forgotPassword, resetPassword, uploadProfileImage, upload } from '../controllers/authController.js';
+import { getConnectInfo, signup, login, getMe, updateProfile, searchUsers, searchUserByRegistrationId, searchUsersByEmail, changePassword, forgotPassword, resetPassword, uploadProfileImage, upload } from '../controllers/authController.js';
 import { authenticate } from '../middleware/auth.js';
 import { exportAccountData, deleteAccount } from '../controllers/accountController.js';
 
@@ -83,6 +84,9 @@ router.post('/delete-account', authenticate, [body('password').notEmpty().withMe
 router.put('/profile', authenticate, updateProfileValidation, updateProfile);
 router.post('/upload-profile-image', authenticate, upload, uploadProfileImage); // New route for profile image upload
 router.get('/search/email', authenticate, searchUsersByEmail);
+// Public, so keep guessing links expensive
+router.get('/connect/:registrationId', rateLimit({ windowMs: 60 * 1000, max: 30, message: { message: 'Too many lookups, please slow down.' } }), getConnectInfo);
+
 router.get('/search', authenticate, (req, res, next) => (
   req.query.registrationId ? searchUserByRegistrationId(req, res) : next()
 ), [
