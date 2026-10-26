@@ -1,7 +1,10 @@
 import { validationResult } from 'express-validator';
 import Relationship from '../models/Relationship.js';
 import User from '../models/User.js';
-import { notify } from '../utils/notify.js';
+import { notify, resolveActions } from '../utils/notify.js';
+
+// A notification that cannot be saved should not break the action, but it must not disappear without a trace
+const logNotifyError = (error) => console.error('Notification error:', error.message);
 import RelationshipHistory from '../models/RelationshipHistory.js';
 import PrivateNote from '../models/PrivateNote.js';
 
@@ -368,7 +371,7 @@ export const requestTypeChange = async (req, res) => {
 
     const partnerId = relationship.getPartner(userId);
     // Fire-and-forget notification
-    notify({
+    await notify({
       recipient: partnerId,
       sender: userId,
       type: 'relationship_type_change_request',
@@ -381,7 +384,7 @@ export const requestTypeChange = async (req, res) => {
         { type: 'decline', label: 'Decline', url: `/relationships/${relationship._id}/decline-type-change` }
       ],
       metadata: { relationshipId: relationship._id, newType }
-    }).catch(() => {});
+    }).catch(logNotifyError);
 
     res.json({ message: 'Type change request sent', relationship });
   } catch (error) {
@@ -403,7 +406,8 @@ export const acceptTypeChange = async (req, res) => {
     if (!relationship) return res.status(404).json({ message: 'Relationship not found' });
     if (!relationship.includesUser(userId)) return res.status(403).json({ message: 'Access denied' });
 
-    const reqState = relationship.typeChangeRequest || {};
+    // A plain copy: the stored request is cleared below, and the requester must still be known afterwards
+    const reqState = relationship.typeChangeRequest ? { ...relationship.typeChangeRequest.toObject?.() ?? relationship.typeChangeRequest } : {};
     if (!reqState.requested) return res.status(400).json({ message: 'No pending type change request' });
 
     // Only the other partner (not requester) can accept
@@ -417,7 +421,7 @@ export const acceptTypeChange = async (req, res) => {
     await relationship.save();
 
     // Notify requester
-    notify({
+    await notify({
       recipient: reqState.requestedBy,
       sender: userId,
       type: 'relationship_type_change_accepted',
@@ -425,8 +429,9 @@ export const acceptTypeChange = async (req, res) => {
       message: `Your request to change relationship type to "${relationship.type}" has been accepted`,
       category: 'relationship',
       metadata: { relationshipId: relationship._id, newType: relationship.type }
-    }).catch(() => {});
+    }).catch(logNotifyError);
 
+    await resolveActions(req.user.id, relationship._id, ['relationship_type_change_request']);
     res.json({ message: 'Type changed successfully', relationship });
   } catch (error) {
     console.error('Accept type change error:', error);
@@ -447,7 +452,8 @@ export const declineTypeChange = async (req, res) => {
     if (!relationship) return res.status(404).json({ message: 'Relationship not found' });
     if (!relationship.includesUser(userId)) return res.status(403).json({ message: 'Access denied' });
 
-    const reqState = relationship.typeChangeRequest || {};
+    // A plain copy: the stored request is cleared below, and the requester must still be known afterwards
+    const reqState = relationship.typeChangeRequest ? { ...relationship.typeChangeRequest.toObject?.() ?? relationship.typeChangeRequest } : {};
     if (!reqState.requested) return res.status(400).json({ message: 'No pending type change request' });
 
     // Only the other partner (not requester) can decline
@@ -459,7 +465,7 @@ export const declineTypeChange = async (req, res) => {
     await relationship.save();
 
     // Notify requester
-    notify({
+    await notify({
       recipient: reqState.requestedBy,
       sender: userId,
       type: 'relationship_type_change_declined',
@@ -467,8 +473,9 @@ export const declineTypeChange = async (req, res) => {
       message: 'Your request to change relationship type was declined',
       category: 'relationship',
       metadata: { relationshipId: relationship._id }
-    }).catch(() => {});
+    }).catch(logNotifyError);
 
+    await resolveActions(req.user.id, relationship._id, ['relationship_type_change_request']);
     res.json({ message: 'Type change request declined', relationship });
   } catch (error) {
     console.error('Decline type change error:', error);
@@ -500,7 +507,7 @@ export const cancelTypeChangeRequest = async (req, res) => {
 
     const partnerId = relationship.getPartner(userId);
     if (partnerId) {
-      notify({
+      await notify({
         recipient: partnerId,
         sender: userId,
         type: 'relationship_type_change_canceled',
@@ -508,9 +515,10 @@ export const cancelTypeChangeRequest = async (req, res) => {
         message: 'The type change request has been canceled',
         category: 'relationship',
         metadata: { relationshipId: relationship._id }
-      }).catch(() => {});
+      }).catch(logNotifyError);
     }
 
+    await resolveActions(relationship.getPartner(req.user.id), relationship._id, ['relationship_type_change_request']);
     res.json({ message: 'Type change request canceled', relationship });
   } catch (error) {
     console.error('Cancel type change error:', error);
@@ -577,6 +585,7 @@ export const acceptRelationship = async (req, res) => {
       }
     });
 
+    await resolveActions(req.user.id, relationship._id, ['relationship_invite']);
     res.json({
       message: 'Relationship accepted successfully',
       relationship
@@ -640,6 +649,7 @@ export const declineRelationship = async (req, res) => {
       }
     });
 
+    await resolveActions(req.user.id, relationship._id, ['relationship_invite']);
     res.json({
       message: 'Relationship declined successfully',
       relationship
@@ -794,6 +804,7 @@ export const confirmBreakup = async (req, res) => {
     relationship.endDate = new Date();
     await relationship.save();
 
+    await resolveActions(req.user.id, relationship._id, ['breakup_request']);
     res.json({
       message: 'Breakup confirmed successfully',
       relationship
@@ -891,6 +902,7 @@ export const cancelBreakupRequest = async (req, res) => {
       });
     }
 
+    await resolveActions(relationship.getPartner(req.user.id), relationship._id, ['breakup_request']);
     res.json({
       success: true,
       message: 'Breakup request canceled successfully. Relationship is now active.',

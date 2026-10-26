@@ -33,7 +33,11 @@ const notificationSchema = new mongoose.Schema({
       'breakup_request_canceled',
       'history_access_request',
       'history_access_granted',
-      'history_access_denied'
+      'history_access_denied',
+      'relationship_type_change_request',
+      'relationship_type_change_accepted',
+      'relationship_type_change_declined',
+      'relationship_type_change_canceled'
     ],
     required: true
   },
