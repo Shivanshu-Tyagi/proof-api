@@ -12,6 +12,10 @@ export const getJwtSecret = () => {
   return 'dev_only_insecure_secret';
 };
 
+// The owner(s) of the app: people allowed to reply to feedback and remove any of it. Set ADMIN_EMAILS to a comma-separated list.
+export const isAdminEmail = (email) =>
+  !!email && (process.env.ADMIN_EMAILS || '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean).includes(String(email).toLowerCase());
+
 export const getFrontendUrls = () =>
   (process.env.FRONTEND_URL || 'http://localhost:5173')
     .split(',')

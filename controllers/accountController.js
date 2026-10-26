@@ -13,6 +13,7 @@ import Notification from '../models/Notification.js';
 import PrivateNote from '../models/PrivateNote.js';
 import RelationshipHistory from '../models/RelationshipHistory.js';
 import Message from '../models/Message.js';
+import Feedback from '../models/Feedback.js';
 
 const LIVE_STATUSES = ['pending', 'active', 'requested_breakup'];
 
@@ -31,7 +32,7 @@ export const exportAccountData = async (req, res) => {
       .lean();
     const relationshipIds = relationships.map((r) => r._id);
 
-    const [terms, milestones, activities, certificates, notifications, privateNotes, history, sentMessages] = await Promise.all([
+    const [terms, milestones, activities, certificates, notifications, privateNotes, history, sentMessages, feedback] = await Promise.all([
       Term.find({ relationship: { $in: relationshipIds } }).lean(),
       Milestone.find({ relationship: { $in: relationshipIds } }).lean(),
       Activity.find({ relationship: { $in: relationshipIds } }).lean(),
@@ -39,7 +40,8 @@ export const exportAccountData = async (req, res) => {
       Notification.find({ recipient: userId }).lean(),
       PrivateNote.find({ user: userId }).select('-__v').lean(),
       RelationshipHistory.find({ $or: [{ actor: userId }, { targetUser: userId }] }).lean(),
-      Message.find({ sender: userId }).select('relationship text createdAt').lean()
+      Message.find({ sender: userId }).select('relationship text createdAt').lean(),
+      Feedback.find({ author: userId }).select('type title body anonymous status response supportCount createdAt').lean()
     ]);
 
     const payload = {
@@ -54,7 +56,8 @@ export const exportAccountData = async (req, res) => {
       notifications,
       privateNotes,
       history,
-      sentMessages
+      sentMessages,
+      feedback
     };
 
     const day = new Date().toISOString().slice(0, 10);
@@ -131,6 +134,9 @@ export const deleteAccount = async (req, res) => {
     await PrivateNote.deleteMany({ user: userId });
     await Notification.deleteMany({ recipient: userId });
     await Message.deleteMany({ sender: userId });
+    // Their feedback goes, and so do their "me too" on other people's
+    await Feedback.deleteMany({ author: userId });
+    await Feedback.updateMany({ supporters: userId }, { $pull: { supporters: userId }, $inc: { supportCount: -1 } });
     await removeAvatarFile(user.avatar);
 
     // 4. The account itself keeps no personal details and can no longer sign in

@@ -18,6 +18,7 @@ import notificationRoutes from './routes/notifications.js';
 import contactRoutes from './routes/contact.js';
 import verifyRoutes from './routes/verify.js';
 import messageRoutes from './routes/messages.js';
+import feedbackRoutes from './routes/feedback.js';
 import Relationship from './models/Relationship.js';
 
 // Import middleware
@@ -91,6 +92,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/verify', verifyRoutes);
 app.use('/api/messages', messageRoutes);
+app.use('/api/feedback', feedbackRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
