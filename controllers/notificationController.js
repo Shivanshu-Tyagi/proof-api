@@ -1,9 +1,12 @@
 import { validationResult } from 'express-validator';
 import Notification from '../models/Notification.js';
+import { settleStaleRequests } from '../utils/notify.js';
 
 export const getNotifications = async (req, res) => {
   try {
     const { status, type, category, page = 1, limit = 20 } = req.query;
+
+    await settleStaleRequests(req.user.id);
 
     const filter = { recipient: req.user.id };
     if (status) filter.status = status;
@@ -163,6 +166,7 @@ export const deleteNotification = async (req, res) => {
 
 export const getUnreadCount = async (req, res) => {
   try {
+    await settleStaleRequests(req.user.id); // so the badge does not count requests that can no longer be answered
     const count = await Notification.getUnreadCount(req.user.id);
 
     res.json({ unreadCount: count });

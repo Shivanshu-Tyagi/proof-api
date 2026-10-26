@@ -83,6 +83,51 @@ describe('Inbox requests', () => {
     });
   });
 
+  describe('requests that went out of date', () => {
+    it('closes an invitation that was answered before answers were tracked', async () => {
+      const d = await signup('d');
+      const id = await invite(a, d, 'Old invite');
+      const [asked] = await find(d, 'relationship_invite');
+      expect(asked.actionRequired).toBe(true);
+      // The state of an older record: the relationship was answered, but the notification still asks
+      await Relationship.updateOne({ _id: id }, { status: 'active' });
+      const after = await find(d, 'relationship_invite');
+      expect(after[0].actionRequired).toBe(false);
+      expect(after[0].status).toEqual('read');
+      // and so the unread badge no longer counts it
+      expect((await as(d, request(app).get('/api/notifications/unread-count'))).body.unreadCount).toEqual(0);
+    });
+
+    it('closes a request whose relationship has been deleted', async () => {
+      const e = await signup('e');
+      const id = await invite(a, e, 'Gone');
+      await Relationship.deleteOne({ _id: id });
+      expect((await find(e, 'relationship_invite'))[0].actionRequired).toBe(false);
+    });
+
+    it('closes an invitation the inviter is no longer waiting on, but keeps one that is still open', async () => {
+      const f = await signup('f');
+      const open = await invite(a, f, 'Still open');
+      const closed = await invite(c, f, 'Closed');
+      await Relationship.updateOne({ _id: closed }, { status: 'declined' });
+      const byTitle = Object.fromEntries((await inbox(f)).filter((n) => n.type === 'relationship_invite').map((n) => [n.metadata.relationshipId.title, n.actionRequired]));
+      expect(byTitle).toEqual({ 'Still open': true, Closed: false });
+      expect(open).toBeTruthy();
+    });
+
+    it('closes a type-change and a break-up request that are no longer pending', async () => {
+      const id = (await Relationship.findOne({ title: 'Hikers' })).id;
+      await as(a, request(app).post(`/api/relationships/${id}/request-type-change`)).send({ newType: 'family' });
+      await as(a, request(app).post(`/api/relationships/${id}/request-breakup`));
+      expect((await find(b, 'relationship_type_change_request')).some((n) => n.actionRequired)).toBe(true);
+      expect((await find(b, 'breakup_request')).some((n) => n.actionRequired)).toBe(true);
+      // both are withdrawn directly in the database, as an older version of the app might have left them
+      await Relationship.updateOne({ _id: id }, { typeChangeRequest: { requested: false }, status: 'active', $unset: { breakupRequestedBy: 1 } });
+      expect((await find(b, 'relationship_type_change_request')).some((n) => n.actionRequired)).toBe(false);
+      expect((await find(b, 'breakup_request')).some((n) => n.actionRequired)).toBe(false);
+    });
+  });
+
   it('withdrawing a break-up request removes the question from the other person\'s Inbox', async () => {
     const id = (await Relationship.findOne({ title: 'Hikers' })).id;
     await as(a, request(app).post(`/api/relationships/${id}/request-breakup`));
