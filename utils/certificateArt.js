@@ -82,7 +82,7 @@ export const certificateSvg = ({ names, level, number, issuedAt, kind = 'relatio
   const verb = milestone ? 'have completed the milestone' : 'have made it official together in';
   const publicVerb = milestone ? 'have reached a milestone together' : 'have made it official together';
   const middleLine = isPublic ? publicVerb : verb;
-  const publicFeatured = milestone ? 'A milestone, verified by Proof' : 'A private relationship, verified by Proof';
+  const publicFeatured = milestone ? 'A milestone, verified by Twogether' : 'A private relationship, verified by Twogether';
   const featured = isPublic ? publicFeatured : `“${esc(subject || (milestone ? 'a shared milestone' : 'their relationship'))}”`;
   const featuredSize = Math.max(28, Math.min(48, Math.floor(980 / (featured.length * 0.5))));
   const sinceLine = !isPublic && dateLine ? esc(dateLine) : '';
@@ -110,12 +110,11 @@ export const certificateSvg = ({ names, level, number, issuedAt, kind = 'relatio
   ${corner(p, `translate(0 ${HEIGHT}) scale(1 -1)`)}
   ${corner(p, `translate(${WIDTH} ${HEIGHT}) scale(-1 -1)`)}
 
-  <!-- Brand -->
-  <g transform="translate(${WIDTH / 2 - 86} 78)">
+  <!-- Brand: the mark (two interlocking circles) and the name, centred as a pair (the name is about 163 wide) -->
+  <g transform="translate(${WIDTH / 2 - 112} 78)">
     <rect width="46" height="46" rx="13" fill="${ROSE}"/>
-    <path d="M23 10l12 4.5v9.2c0 7.6-5.2 12.4-12 14.3-6.8-1.9-12-6.7-12-14.3v-9.2z" fill="none" stroke="#fff" stroke-width="2.6" stroke-linejoin="round"/>
-    <path d="M17.5 23.5l4 4 7.5-8" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
-    <text x="62" y="35" font-family="${SANS}" font-size="36" font-weight="800" fill="${INK}" letter-spacing="-1">proof</text>
+    <g fill="none" stroke="#fff" stroke-width="3.2"><circle cx="17.6" cy="23" r="9.6"/><circle cx="28.4" cy="23" r="9.6"/></g>
+    <text x="62" y="35" font-family="${SANS}" font-size="36" font-weight="800" fill="${INK}" letter-spacing="-1">twogether</text>
   </g>
   <text x="${WIDTH / 2}" y="160" text-anchor="middle" font-family="${SANS}" font-size="14" font-weight="700" letter-spacing="5" fill="${MUTED}">A PRIVATE RECORD FOR TWO</text>
 
@@ -155,7 +154,7 @@ export const certificateSvg = ({ names, level, number, issuedAt, kind = 'relatio
   <text x="${WIDTH - 310}" y="852" text-anchor="middle" font-family="${SANS}" font-size="13" font-weight="700" letter-spacing="4" fill="${MUTED}">CERTIFICATE NO.</text>
   <text x="${WIDTH - 310}" y="886" text-anchor="middle" font-family="${MONO}" font-size="21" font-weight="700" fill="${INK}">${esc(number)}</text>
 
-  <text x="${WIDTH / 2}" y="927" text-anchor="middle" font-family="${SANS}" font-size="13" fill="${MUTED}">A keepsake record made in Proof. It is not a legal document.</text>
+  <text x="${WIDTH / 2}" y="927" text-anchor="middle" font-family="${SANS}" font-size="13" fill="${MUTED}">A keepsake record made in Twogether. It is not a legal document.</text>
 </svg>`;
 }
 

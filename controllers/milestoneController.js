@@ -258,7 +258,7 @@ export const completeMilestone = async (req, res) => {
           { user: populatedRelationship.partner._id }
         ],
         design: milestone.rewards.certificateDesign,
-        metadata: { issuedBy: 'Proof' },
+        metadata: { issuedBy: 'Twogether' },
       });
 
       await certificate.save();

@@ -25,7 +25,7 @@ export const sendMail = async ({ to, subject, text }) => {
     return;
   }
   await smtp.sendMail({
-    from: process.env.MAIL_FROM || 'Relationship App <no-reply@localhost>',
+    from: process.env.MAIL_FROM || 'Twogether <no-reply@localhost>',
     to,
     subject,
     text

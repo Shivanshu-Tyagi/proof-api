@@ -57,7 +57,7 @@ describe('account export and deletion', () => {
   it('exports your own data as a download, without secrets or other people\'s private data', async () => {
     const res = await as(a, request(app).get('/api/auth/export'));
     expect(res.statusCode).toEqual(200);
-    expect(res.headers['content-disposition']).toMatch(/^attachment; filename="proof-data-\d{4}-\d{2}-\d{2}\.json"$/);
+    expect(res.headers['content-disposition']).toMatch(/^attachment; filename="twogether-data-\d{4}-\d{2}-\d{2}\.json"$/);
 
     const text = res.text;
     const data = JSON.parse(text);

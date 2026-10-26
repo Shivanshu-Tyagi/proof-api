@@ -89,7 +89,7 @@ export const generateRelationshipCertificate = async (req, res) => {
         }
       },
       metadata: {
-        issuedBy: 'Proof',
+        issuedBy: 'Twogether',
         validUntil: null
       },
       stats: {

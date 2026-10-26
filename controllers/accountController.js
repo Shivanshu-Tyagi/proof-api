@@ -44,7 +44,7 @@ export const exportAccountData = async (req, res) => {
 
     const payload = {
       exportedAt: new Date().toISOString(),
-      about: 'Everything Proof holds about your account. Other people appear by name and username only.',
+      about: 'Everything Twogether holds about your account. Other people appear by name and username only.',
       profile: user,
       relationships,
       agreements: terms,
@@ -59,7 +59,7 @@ export const exportAccountData = async (req, res) => {
 
     const day = new Date().toISOString().slice(0, 10);
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="proof-data-${day}.json"`);
+    res.setHeader('Content-Disposition', `attachment; filename="twogether-data-${day}.json"`);
     res.send(JSON.stringify(payload, null, 2));
   } catch (error) {
     console.error('Export account data error:', error);

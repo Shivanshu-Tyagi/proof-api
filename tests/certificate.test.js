@@ -43,7 +43,7 @@ describe('certificate artwork', () => {
     expect(res.text).toContain('Weekend hikers');
     expect(res.text).toContain('GOLD');
     expect(res.text).toContain(number);
-    expect(res.text).toContain('proof');
+    expect(res.text).toContain('twogether');
     expect(res.text).not.toContain('RelationApp');
   });
 
@@ -106,7 +106,7 @@ describe('certificate artwork', () => {
     const issued = await Certificate.findOne({ relatedTo: 'milestone' });
     expect(issued).toBeTruthy();
     expect(issued.level).toEqual('gold');
-    expect(issued.metadata.issuedBy).toEqual('Proof');
+    expect(issued.metadata.issuedBy).toEqual('Twogether');
 
     const art = await svgOf(as(b, request(app).get(`/api/certificates/${issued._id}/image`)));
     expect(art.status).toEqual(200);
